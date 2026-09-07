@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cadena de Estéticas — Gestión</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg: #FAF6F2;
+    --card: #FFFFFF;
+    --ink: #2B1E20;
+    --ink-soft: #6E5A5C;
+    --wine: #6B2737;
+    --wine-dark: #521E2B;
+    --rose: #C98A9C;
+    --rose-pale: #F1DEE2;
+    --sage: #7C8F63;
+    --line: #E7D9D4;
+    --danger: #A6432F;
+  }
+  .esth-root{ background: var(--bg); color: var(--ink); font-family: -apple-system, "Segoe UI", ui-sans-serif, system-ui, sans-serif; min-height: 100%; box-sizing: border-box; }
+  .esth-root *{ box-sizing: border-box; }
+  .esth-serif{ font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif; }
+  .esth-screen{ max-width: 480px; margin: 0 auto; padding: 32px 20px 60px; }
+  .esth-screen.wide{ max-width: 900px; }
+  .esth-eyebrow{ font-size: 13px; color: var(--ink-soft); margin: 0 0 4px; }
+  .esth-title{ font-size: 26px; margin: 0 0 6px; font-weight: 600; }
+  .esth-sub{ font-size: 14px; color: var(--ink-soft); margin: 0 0 20px; line-height: 1.5; }
+  .esth-card{ background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 18px; }
+  .esth-list{ display: flex; flex-direction: column; gap: 10px; }
+  .esth-branch{ display: flex; align-items: center; justify-content: space-between; background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 16px 18px; cursor: pointer; text-align: left; width: 100%; font-size: 16px; color: var(--ink); }
+  .esth-branch:hover{ border-color: var(--wine); }
+  .esth-branch small{ display:block; color: var(--ink-soft); font-size: 12px; margin-top: 3px; font-weight: 400; }
+  .esth-role-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+  .esth-role-btn{ border: 1px solid var(--line); background: var(--card); border-radius: 4px; padding: 26px 14px; cursor: pointer; text-align: center; color: var(--ink); }
+  .esth-role-btn:hover{ border-color: var(--wine); }
+  .esth-role-btn .esth-role-label{ font-size: 15px; font-weight: 600; margin-top: 8px; }
+  .esth-role-btn .esth-role-desc{ font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+  .esth-btn{ border: none; border-radius: 3px; padding: 10px 16px; font-size: 13.5px; cursor: pointer; font-weight: 600; background: var(--wine); color: #fff; }
+  .esth-btn:hover{ background: var(--wine-dark); }
+  .esth-btn.secondary{ background: transparent; color: var(--wine); border: 1px solid var(--wine); }
+  .esth-btn.ghost{ background: transparent; color: var(--ink-soft); padding: 8px 4px; font-weight: 500; }
+  .esth-btn.danger{ background: var(--danger); }
+  .esth-btn.block{ width: 100%; }
+  .esth-btn:disabled{ opacity: .5; cursor: not-allowed; }
+  .esth-field{ margin-bottom: 12px; }
+  .esth-field label{ display:block; font-size: 11.5px; color: var(--ink-soft); margin-bottom: 4px; }
+  .esth-field input, .esth-field select{ width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 3px; font-size: 13.5px; background: #fff; color: var(--ink); font-family: inherit; }
+  .esth-field input:focus, .esth-field select:focus{ outline: 2px solid var(--rose); border-color: var(--wine); }
+  .esth-field input[readonly]{ background: #F5EFEC; color: var(--ink-soft); }
+  .esth-hint{ font-size: 11px; color: var(--ink-soft); margin-top: 4px; }
+  .esth-hint.warn{ color: var(--danger); }
+  .esth-row{ display:flex; justify-content: space-between; align-items:center; gap: 10px; }
+  .esth-top{ display:flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+  .esth-grid2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .esth-section-title{ font-size: 13px; font-weight: 600; margin: 22px 0 10px; color: var(--wine-dark); }
+  .esth-fieldset{ border: 1px solid var(--line); border-radius: 4px; padding: 14px; margin-bottom: 12px; }
+  .esth-legend{ font-size: 11.5px; color: var(--ink-soft); margin-bottom: 8px; }
+  .esth-tabs{ display:flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 18px; overflow-x: auto; }
+  .esth-tab{ padding: 9px 12px; font-size: 12.5px; cursor: pointer; color: var(--ink-soft); border-bottom: 2px solid transparent; white-space: nowrap; background: none; border-top:none; border-left:none; border-right:none; font-family: inherit; }
+  .esth-tab.active{ color: var(--wine); border-bottom-color: var(--wine); font-weight: 600; }
+  .esth-table{ width: 100%; border-collapse: collapse; font-size: 13px; }
+  .esth-table th{ text-align: left; font-weight: 500; color: var(--ink-soft); font-size: 11.5px; padding: 7px 6px; border-bottom: 1px solid var(--line); }
+  .esth-table td{ padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  .esth-table tr:last-child td{ border-bottom: none; }
+  .esth-money{ font-variant-numeric: tabular-nums; }
+  .esth-empty{ color: var(--ink-soft); font-size: 13px; padding: 18px 0; text-align: center; }
+  .esth-error{ background: #FBEAE6; color: var(--danger); border: 1px solid #EBC3B8; padding: 9px 11px; border-radius: 3px; font-size: 12.5px; margin-bottom: 12px; }
+  .esth-ok{ background: #EEF1E8; color: var(--sage); border: 1px solid #D3DCC3; padding: 9px 11px; border-radius: 3px; font-size: 12.5px; margin-bottom: 12px; }
+  .esth-summary-grid{ display:grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 20px; }
+  .esth-summary-box{ border: 1px solid var(--line); border-radius: 4px; padding: 13px; background: var(--card); }
+  .esth-summary-box .n{ font-size: 19px; font-weight: 600; }
+  .esth-summary-box .l{ font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+  .esth-icon-btn{ background:none; border:none; color: var(--ink-soft); cursor:pointer; font-size: 12px; padding: 3px 5px; }
+  .esth-icon-btn:hover{ color: var(--danger); }
+  .esth-tag{ display:inline-block; font-size: 10.5px; padding: 2px 7px; border-radius: 10px; background: var(--rose-pale); color: var(--wine-dark); }
+  .esth-modal-backdrop{ position: fixed; inset: 0; background: rgba(43,30,32,.45); display:flex; align-items:center; justify-content:center; z-index: 50; padding: 20px; }
+  .esth-modal{ background: #fff; border-radius: 6px; padding: 22px; max-width: 320px; width: 100%; text-align: center; }
+  .esth-pin-input{ font-size: 26px; text-align: center; letter-spacing: 8px; }
+  @media (max-width: 420px){ .esth-summary-grid{ grid-template-columns: 1fr 1fr; } .esth-grid2{ grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div id="esth-app" class="esth-root"></div>
+<script>
+(function(){
+  const STORAGE_KEY = 'salon-chain-data-v3';
+
+  const svc = (id,name,price,category,variable) => ({ id, name, category, price: variable ? null : price, variable: !!variable });
+
+  const TINTE_FRACCIONES = [
+    { label: 'Sin tinte', value: 0 },
+    { label: '⅛ Tubo ($16)', value: 16 },
+    { label: '¼ Tubo ($32)', value: 32 },
+    { label: '½ Tubo ($65)', value: 65 },
+    { label: '¾ Tubo ($97)', value: 97 },
+    { label: '1 Tubo completo ($130)', value: 130 },
+  ];
+  const DECOLORANTE_PRECIO_GR = 2.5;
+
+  const defaultState = () => ({
+    chainName: 'Mi Cadena de Estéticas',
+    admin: { user: 'admin', pass: '1234', pin: '0000' },
+    branches: [
+      { id: 'b1', name: 'Sucursal 1', address: '', services: [], stylists: [], sales: [] }
+    ]
+  });
+
+  let state = null;
+  let view = { screen: 'home', branchId: null, adminTab: 'resumen', error: '' };
+  let pinModal = null; // { onConfirm(pin) }
+  let cashModal = null; // { total, onConfirm(recibido) }
+
+  const uid = (p) => p + Math.random().toString(36).slice(2, 8);
+  const money = (n) => '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const todayStr = () => new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+  const isToday = (iso) => { const d = new Date(iso), t = new Date(); return d.toDateString() === t.toDateString(); };
+
+  async function save(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){ console.error('storage set failed', e); } }
+  async function load(){
+    try{ const raw = localStorage.getItem(STORAGE_KEY); state = raw ? JSON.parse(raw) : defaultState(); }
+    catch(e){ state = defaultState(); }
+    if (!state.admin.pin) state.admin.pin = '0000';
+  }
+
+  function branch(){ return state.branches.find(b => b.id === view.branchId); }
+  function el(html){ const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; }
+  function root(){ return document.getElementById('esth-app'); }
+
+  function computeTotals(b){
+    const today = b.sales.filter(s => isToday(s.date));
+    const servicios = today.filter(s => s.type === 'servicio');
+    const productos = today.filter(s => s.type === 'producto');
+    const gastos = today.filter(s => s.type === 'gasto');
+    const totalServicios = servicios.reduce((a,s)=>a+s.price,0);
+    const totalProductos = productos.reduce((a,s)=>a+s.price,0);
+    const totalGastos = gastos.reduce((a,s)=>a+s.amount,0);
+    const totalBaucher = servicios.filter(s=>s.method==='Baucher').reduce((a,s)=>a+s.price,0);
+    const efectivoServicios = servicios.filter(s=>s.method==='Efectivo').reduce((a,s)=>a+s.price,0);
+    const efectivoNeto = efectivoServicios + totalProductos - totalGastos;
+    const totalUniversal = totalServicios + totalProductos - totalGastos;
+    const porEstilista = {};
+    servicios.forEach(s => {
+      if (!porEstilista[s.stylistName]) porEstilista[s.stylistName] = { nombre: s.stylistName, servicios: 0, bruto: 0, descuento: 0 };
+      const row = porEstilista[s.stylistName];
+      row.servicios += 1; row.bruto += s.price; row.descuento += (s.descuentoInsumos||0);
+    });
+    return { today, servicios, productos, gastos, totalServicios, totalProductos, totalGastos, totalBaucher, efectivoNeto, totalUniversal, porEstilista: Object.values(porEstilista) };
+  }
+
+  function render(){
+    root().innerHTML = '';
+    root().appendChild(screens[view.screen]());
+    if (pinModal) root().appendChild(renderPinModal());
+    if (cashModal) root().appendChild(renderCashModal());
+  }
+
+  function renderCashModal(){
+    const wrap = el(`<div class="esth-modal-backdrop"><div class="esth-modal">
+      <p class="esth-eyebrow esth-serif">Cobro en efectivo</p>
+      <h2 class="esth-title esth-serif" style="font-size:19px;">Total a pagar: ${money(cashModal.total)}</h2>
+      ${cashModal.error ? `<p class="esth-error">${cashModal.error}</p>` : ''}
+      <div class="esth-field" style="margin-top:12px;text-align:left;"><label>¿Cuánto dio el cliente? ($)</label>
+        <input class="esth-pin-input" id="cash-in" type="number" min="0" step="0.5" style="letter-spacing:normal;font-size:20px;"/></div>
+      <p class="esth-title esth-serif" id="cash-change" style="font-size:20px;color:var(--wine);margin:10px 0 16px;">Cambio: ${money(0)}</p>
+      <div class="esth-row">
+        <button class="esth-btn ghost" id="cash-cancel">Cancelar</button>
+        <button class="esth-btn" id="cash-ok">Confirmar cobro</button>
+      </div>
+    </div></div>`);
+    const input = wrap.querySelector('#cash-in');
+    const changeLabel = wrap.querySelector('#cash-change');
+    input.addEventListener('input', () => {
+      const recibido = parseFloat(input.value) || 0;
+      changeLabel.textContent = 'Cambio: ' + money(Math.max(0, recibido - cashModal.total));
+    });
+    wrap.querySelector('#cash-cancel').onclick = () => { cashModal = null; render(); };
+    const doConfirm = () => {
+      const recibido = parseFloat(input.value);
+      if (isNaN(recibido) || recibido < 0){ cashModal = { ...cashModal, error: 'Ingresa cuánto dio el cliente.' }; render(); return; }
+      if (recibido < cashModal.total){ cashModal = { ...cashModal, error: 'El efectivo recibido es menor al total a pagar.' }; render(); return; }
+      const fn = cashModal.onConfirm; cashModal = null; fn(recibido);
+    };
+    wrap.querySelector('#cash-ok').onclick = doConfirm;
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') doConfirm(); });
+    setTimeout(() => input.focus(), 0);
+    return wrap;
+  }
+
+  function renderPinModal(){
+    const wrap = el(`<div class="esth-modal-backdrop"><div class="esth-modal">
+      <p class="esth-eyebrow esth-serif">Autorización requerida</p>
+      <h2 class="esth-title esth-serif" style="font-size:19px;">${pinModal.title || 'Ingresa el PIN de administrador'}</h2>
+      <p class="esth-sub" style="margin-bottom:14px;">${pinModal.message || 'Se modificó un precio base. Autoriza este cobro con el PIN.'}</p>
+      ${pinModal.error ? `<p class="esth-error">${pinModal.error}</p>` : ''}
+      <div class="esth-field"><input class="esth-pin-input" id="pin-in" type="password" maxlength="6" placeholder="••••"/></div>
+      <div class="esth-row">
+        <button class="esth-btn ghost" id="pin-cancel">Cancelar</button>
+        <button class="esth-btn" id="pin-ok">Autorizar</button>
+      </div>
+    </div></div>`);
+    wrap.querySelector('#pin-cancel').onclick = () => { pinModal = null; render(); };
+    const doConfirm = () => {
+      const val = wrap.querySelector('#pin-in').value;
+      if (val === state.admin.pin){ const fn = pinModal.onConfirm; pinModal = null; fn(); }
+      else { pinModal = { ...pinModal, error: 'PIN incorrecto.' }; render(); }
+    };
+    wrap.querySelector('#pin-ok').onclick = doConfirm;
+    wrap.querySelector('#pin-in').addEventListener('keydown', e => { if (e.key === 'Enter') doConfirm(); });
+    return wrap;
+  }
+
+  // ---------- HOME ----------
+  function screenHome(){
+    const wrap = el(`<div class="esth-screen"><p class="esth-eyebrow esth-serif">Bienvenido</p>
+      <h1 class="esth-title esth-serif">${state.chainName}</h1>
+      <p class="esth-sub">Elige la sucursal donde vas a trabajar hoy.</p>
+      <div class="esth-list" id="branch-list"></div></div>`);
+    const list = wrap.querySelector('#branch-list');
+    state.branches.forEach(b => {
+      const btn = el(`<button class="esth-branch"><span>${b.name}<small>${b.address || ''}</small></span><span>›</span></button>`);
+      btn.onclick = () => { view = { ...view, screen: 'role', branchId: b.id, error: '' }; render(); };
+      list.appendChild(btn);
+    });
+    return wrap;
+  }
+
+  // ---------- ROLE ----------
+  function screenRole(){
+    const b = branch();
+    const wrap = el(`<div class="esth-screen">
+      <button class="esth-btn ghost" id="back">‹ Cambiar de sucursal</button>
+      <p class="esth-eyebrow esth-serif" style="margin-top:14px;">${b.name}</p>
+      <h1 class="esth-title esth-serif">¿Cómo quieres entrar?</h1>
+      <p class="esth-sub">Selecciona tu rol para continuar.</p>
+      <div class="esth-role-grid">
+        <button class="esth-role-btn" id="go-cashier"><div class="esth-role-label">Cajero</div><div class="esth-role-desc">Corte de caja del día</div></button>
+        <button class="esth-role-btn" id="go-admin"><div class="esth-role-label">Administrador</div><div class="esth-role-desc">Precios, estilistas y reportes</div></button>
+      </div></div>`);
+    wrap.querySelector('#back').onclick = () => { view = { screen: 'home', branchId: null, error: '' }; render(); };
+    wrap.querySelector('#go-cashier').onclick = () => { view = { ...view, screen: 'cashier', error: '' }; render(); };
+    wrap.querySelector('#go-admin').onclick = () => { view = { ...view, screen: 'adminLogin', error: '' }; render(); };
+    return wrap;
+  }
+
+  // ---------- CASHIER ----------
+  function screenCashier(){
+    const b = branch();
+    const t = computeTotals(b);
+    const categories = [...new Set(b.services.map(s=>s.category))];
+
+    const wrap = el(`<div class="esth-screen">
+      <div class="esth-top">
+        <div><p class="esth-eyebrow esth-serif">${b.name} · Cajero</p><h1 class="esth-title esth-serif">Corte de caja</h1></div>
+        <button class="esth-btn ghost" id="exit">Salir</button>
+      </div>
+      <p class="esth-eyebrow esth-serif" style="margin-bottom:16px;">${todayStr()}</p>
+
+      <div class="esth-card" id="form-servicio">
+        <p class="esth-legend" style="font-weight:600;font-size:13px;color:var(--wine-dark);margin-bottom:10px;">Registrar servicio</p>
+        <div class="esth-field"><label>Estilista</label><select id="sel-stylist">
+          ${b.stylists.map(e => `<option value="${e.id}">${e.name}</option>`).join('') || '<option value="">Sin estilistas</option>'}
+        </select></div>
+        <div class="esth-field"><label>Servicio</label><select id="sel-service">
+          ${categories.map(cat => `<optgroup label="${cat}">${b.services.filter(s=>s.category===cat).map(s=>
+            `<option value="${s.id}" data-price="${s.price ?? ''}" data-variable="${s.variable}">${s.name}${s.variable ? ' (precio variable)' : ' — '+money(s.price)}</option>`).join('')}</optgroup>`).join('') || '<option value="">Sin servicios</option>'}
+        </select></div>
+        <div class="esth-field"><label>Monto a cobrar ($)</label><input id="in-monto" type="number" min="0" step="0.5"/>
+          <p class="esth-hint warn" id="pin-hint" style="display:none;">🔒 Este precio difiere del precio base: se pedirá PIN de administrador.</p>
+        </div>
+
+        <div class="esth-fieldset">
+          <p class="esth-legend">Descuento de insumos (opcional)</p>
+          <div class="esth-grid2">
+            <div class="esth-field"><label>Fracción de tinte</label><select id="in-tinte">
+              ${TINTE_FRACCIONES.map(f => `<option value="${f.value}">${f.label}</option>`).join('')}
+            </select></div>
+            <div class="esth-field"><label>Gramos decolorante</label><input id="in-decolorante" type="number" min="0" placeholder="0"/></div>
+          </div>
+          <p class="esth-hint" id="insumos-total">Descuento de insumos: ${money(0)}</p>
+        </div>
+
+        <div class="esth-fieldset">
+          <p class="esth-legend">Cobro en caja</p>
+          <div class="esth-field"><label>Método de pago</label><select id="sel-method">
+            <option value="Efectivo">Efectivo</option><option value="Baucher">Tarjeta / Baucher</option>
+          </select></div>
+          <p class="esth-hint">Si es efectivo, al registrar se abrirá una ventana para calcular el cambio.</p>
+        </div>
+        <button class="esth-btn block" id="btn-servicio" ${b.services.length===0||b.stylists.length===0?'disabled':''}>Cerrar venta / Registrar</button>
+      </div>
+
+      <p class="esth-section-title">Venta de producto</p>
+      <div class="esth-card">
+        <div class="esth-grid2">
+          <div class="esth-field"><label>Producto</label><input id="prod-nombre" type="text" placeholder="Ej. Shampoo"/></div>
+          <div class="esth-field"><label>Precio ($)</label><input id="prod-precio" type="number" min="0" step="0.5"/></div>
+        </div>
+        <div class="esth-field"><label>Comisión ($)</label><input id="prod-comision" type="number" min="0" step="0.5" value="0"/></div>
+        <button class="esth-btn secondary block" id="btn-producto">Agregar venta</button>
+      </div>
+
+      <p class="esth-section-title">Registro de gastos</p>
+      <div class="esth-card">
+        <div class="esth-field"><label>Concepto</label><input id="gasto-concepto" type="text" placeholder="Ej. Garrafón, insumos"/></div>
+        <div class="esth-field"><label>Monto ($)</label><input id="gasto-monto" type="number" min="0" step="0.5"/></div>
+        <button class="esth-btn danger block" id="btn-gasto">Agregar gasto</button>
+      </div>
+
+      <p class="esth-section-title">Resumen de hoy</p>
+      <div class="esth-summary-grid">
+        <div class="esth-summary-box"><div class="n">${money(t.totalServicios)}</div><div class="l">Servicios</div></div>
+        <div class="esth-summary-box"><div class="n">${money(t.totalProductos)}</div><div class="l">Productos</div></div>
+        <div class="esth-summary-box"><div class="n">${money(t.totalGastos)}</div><div class="l">Gastos</div></div>
+        <div class="esth-summary-box"><div class="n">${money(t.totalBaucher)}</div><div class="l">Baucher</div></div>
+        <div class="esth-summary-box"><div class="n">${money(t.efectivoNeto)}</div><div class="l">Efectivo neto</div></div>
+        <div class="esth-summary-box"><div class="n">${money(t.totalUniversal)}</div><div class="l">Total universal</div></div>
+      </div>
+      <div id="movs" class="esth-card"></div>
+    </div>`);
+
+    wrap.querySelector('#exit').onclick = () => { view = { screen: 'role', branchId: b.id, error: '' }; render(); };
+
+    // live price default + PIN hint
+    const serviceSel = wrap.querySelector('#sel-service');
+    const montoInput = wrap.querySelector('#in-monto');
+    const pinHint = wrap.querySelector('#pin-hint');
+    const applyServiceDefault = () => {
+      const opt = serviceSel.selectedOptions[0];
+      if (!opt) return;
+      const isVar = opt.dataset.variable === 'true';
+      montoInput.value = isVar ? '' : opt.dataset.price;
+      updatePinHint();
+    };
+    const updatePinHint = () => {
+      const opt = serviceSel.selectedOptions[0];
+      if (!opt) { pinHint.style.display = 'none'; return; }
+      const isVar = opt.dataset.variable === 'true';
+      const base = parseFloat(opt.dataset.price);
+      const current = parseFloat(montoInput.value);
+      const differs = !isVar && !isNaN(current) && !isNaN(base) && current !== base;
+      pinHint.style.display = differs ? 'block' : 'none';
+    };
+    serviceSel.addEventListener('change', applyServiceDefault);
+    montoInput.addEventListener('input', updatePinHint);
+    applyServiceDefault();
+
+    // insumos calc
+    const tinteSel = wrap.querySelector('#in-tinte');
+    const decoInput = wrap.querySelector('#in-decolorante');
+    const insumosLabel = wrap.querySelector('#insumos-total');
+    const calcInsumos = () => {
+      const tinte = parseFloat(tinteSel.value) || 0;
+      const gramos = parseFloat(decoInput.value) || 0;
+      const total = tinte + gramos * DECOLORANTE_PRECIO_GR;
+      insumosLabel.textContent = 'Descuento de insumos: ' + money(total);
+      return total;
+    };
+    tinteSel.addEventListener('change', calcInsumos);
+    decoInput.addEventListener('input', calcInsumos);
+
+    const methodSel = wrap.querySelector('#sel-method');
+
+    // registrar servicio
+    const doRegisterServicio = async () => {
+      const opt = serviceSel.selectedOptions[0];
+      const stylist = b.stylists.find(e => e.id === wrap.querySelector('#sel-stylist').value);
+      if (!opt || !stylist) return;
+      const isVar = opt.dataset.variable === 'true';
+      const base = parseFloat(opt.dataset.price);
+      const monto = parseFloat(montoInput.value);
+      if (isNaN(monto) || monto < 0) return;
+      const descuentoInsumos = calcInsumos();
+      const entry = {
+        id: uid('v'), type: 'servicio', serviceName: opt.textContent.split(' — ')[0].replace(' (precio variable)',''),
+        basePrice: isVar ? null : base, price: monto, stylistName: stylist.name,
+        method: methodSel.value, cashReceived: null, descuentoInsumos, date: new Date().toISOString()
+      };
+      const finish = async (cashReceived) => {
+        entry.cashReceived = cashReceived;
+        b.sales.unshift(entry); await save(); render();
+      };
+      const proceedToPayment = () => {
+        if (methodSel.value === 'Efectivo'){
+          cashModal = { total: monto, onConfirm: (recibido) => finish(recibido) };
+          render();
+        } else {
+          finish(null);
+        }
+      };
+      if (!isVar && monto !== base){
+        pinModal = { message: 'El monto (' + money(monto) + ') difiere del precio base (' + money(base) + ') de "' + entry.serviceName + '". Autoriza con PIN.', onConfirm: proceedToPayment };
+        render();
+      } else { proceedToPayment(); }
+    };
+    wrap.querySelector('#btn-servicio').onclick = doRegisterServicio;
+
+    wrap.querySelector('#btn-producto').onclick = async () => {
+      const nombre = wrap.querySelector('#prod-nombre').value.trim();
+      const precio = parseFloat(wrap.querySelector('#prod-precio').value);
+      const comision = parseFloat(wrap.querySelector('#prod-comision').value) || 0;
+      if (!nombre || isNaN(precio) || precio < 0) return;
+      b.sales.unshift({ id: uid('p'), type: 'producto', name: nombre, price: precio, commission: comision, date: new Date().toISOString() });
+      await save(); render();
+    };
+
+    wrap.querySelector('#btn-gasto').onclick = async () => {
+      const concepto = wrap.querySelector('#gasto-concepto').value.trim();
+      const monto = parseFloat(wrap.querySelector('#gasto-monto').value);
+      if (!concepto || isNaN(monto) || monto < 0) return;
+      b.sales.unshift({ id: uid('g'), type: 'gasto', concept: concepto, amount: monto, date: new Date().toISOString() });
+      await save(); render();
+    };
+
+    // movimientos
+    const movsBox = wrap.querySelector('#movs');
+    if (t.today.length === 0){
+      movsBox.appendChild(el(`<p class="esth-empty">Aún no hay movimientos hoy.</p>`));
+    } else {
+      const table = el(`<table class="esth-table"><thead><tr><th>Tipo</th><th>Detalle</th><th style="text-align:right;">Monto</th><th></th></tr></thead><tbody></tbody></table>`);
+      const tbody = table.querySelector('tbody');
+      t.today.forEach(m => {
+        let tag, detail, amt;
+        if (m.type === 'servicio'){ tag = 'Servicio'; detail = `${m.serviceName} · ${m.stylistName} · ${m.method}`; amt = m.price; }
+        else if (m.type === 'producto'){ tag = 'Producto'; detail = m.name; amt = m.price; }
+        else { tag = 'Gasto'; detail = m.concept; amt = -m.amount; }
+        const row = el(`<tr><td><span class="esth-tag">${tag}</span></td><td>${detail}</td>
+          <td class="esth-money" style="text-align:right;">${amt<0?'-':''}${money(Math.abs(amt))}</td>
+          <td style="text-align:right;"><button class="esth-icon-btn">Eliminar</button></td></tr>`);
+        row.querySelector('button').onclick = async () => { b.sales = b.sales.filter(x => x.id !== m.id); await save(); render(); };
+        tbody.appendChild(row);
+      });
+      movsBox.appendChild(table);
+    }
+    return wrap;
+  }
+
+  // ---------- ADMIN LOGIN ----------
+  function screenAdminLogin(){
+    const b = branch();
+    const wrap = el(`<div class="esth-screen">
+      <button class="esth-btn ghost" id="back">‹ Volver</button>
+      <p class="esth-eyebrow esth-serif" style="margin-top:14px;">${b.name} · Administrador</p>
+      <h1 class="esth-title esth-serif">Iniciar sesión</h1>
+      <p class="esth-sub">Ingresa tu usuario y contraseña de administrador.</p>
+      <div class="esth-card">
+        ${view.error ? `<p class="esth-error">${view.error}</p>` : ''}
+        <div class="esth-field"><label>Usuario</label><input id="in-user" type="text" autocomplete="username"/></div>
+        <div class="esth-field"><label>Contraseña</label><input id="in-pass" type="password" autocomplete="current-password"/></div>
+        <button class="esth-btn block" id="submit">Entrar</button>
+      </div></div>`);
+    wrap.querySelector('#back').onclick = () => { view = { screen: 'role', branchId: b.id, error: '' }; render(); };
+    const doLogin = () => {
+      const u = wrap.querySelector('#in-user').value.trim();
+      const p = wrap.querySelector('#in-pass').value;
+      if (u === state.admin.user && p === state.admin.pass) view = { ...view, screen: 'admin', adminTab: 'resumen', error: '' };
+      else view = { ...view, error: 'Usuario o contraseña incorrectos.' };
+      render();
+    };
+    wrap.querySelector('#submit').onclick = doLogin;
+    wrap.querySelector('#in-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+    return wrap;
+  }
+
+  // ---------- ADMIN ----------
+  function screenAdmin(){
+    const b = branch();
+    const wrap = el(`<div class="esth-screen wide">
+      <div class="esth-top">
+        <div><p class="esth-eyebrow esth-serif">${state.chainName}</p><h1 class="esth-title esth-serif">${b.name}</h1></div>
+        <button class="esth-btn ghost" id="logout">Cerrar sesión</button>
+      </div>
+      <div class="esth-tabs">
+        ${[['resumen','Resumen'],['precios','Precios y servicios'],['estilistas','Estilistas'],['sucursales','Sucursales'],['config','Configuración']]
+          .map(([k,l]) => `<button class="esth-tab ${view.adminTab===k?'active':''}" data-tab="${k}">${l}</button>`).join('')}
+      </div>
+      <div id="admin-body"></div></div>`);
+    wrap.querySelector('#logout').onclick = () => { view = { screen: 'role', branchId: b.id, error: '' }; render(); };
+    wrap.querySelectorAll('.esth-tab').forEach(t => { t.onclick = () => { view = { ...view, adminTab: t.dataset.tab }; render(); }; });
+    const body = wrap.querySelector('#admin-body');
+    const renderers = { resumen: adminResumen, precios: adminPrecios, estilistas: adminEstilistas, sucursales: adminSucursales, config: adminConfig };
+    body.appendChild(renderers[view.adminTab](b));
+    return wrap;
+  }
+
+  function adminResumen(b){
+    const t = computeTotals(b);
+    const wrap = el(`<div>
+      <div class="esth-summary-grid">
+        <div class="esth-summary-box"><div class="n">${money(t.totalServicios)}</div><div class="l">Servicios</div></div>
+        <div class="esth-summary-box"><div class="n">${money(t.totalProductos)}</div><div class="l">Ventas productos</div></div>
+        <div class="esth-summary-box"><div class="n">${money(t.totalGastos)}</div><div class="l">Gastos</div></div>
+        <div class="esth-summary-box"><div class="n">${money(t.totalBaucher)}</div><div class="l">Baucher (tarjeta)</div></div>
+        <div class="esth-summary-box"><div class="n">${money(t.efectivoNeto)}</div><div class="l">Efectivo neto</div></div>
+        <div class="esth-summary-box"><div class="n">${money(t.totalUniversal)}</div><div class="l">Total universal</div></div>
+      </div>
+      <div class="esth-row" style="margin-bottom:10px;"><p class="esth-section-title" style="margin:0;">Cuentas por estilista</p>
+        <button class="esth-btn secondary" id="export-xlsx">Exportar a Excel</button></div>
+      <div id="stylist-table" style="margin-bottom:22px;"></div>
+      <p class="esth-section-title">Movimientos de hoy</p>
+      <div id="movs-table"></div>
+    </div>`);
+
+    const stTable = wrap.querySelector('#stylist-table');
+    if (t.porEstilista.length === 0){ stTable.appendChild(el(`<p class="esth-empty">Sin servicios registrados hoy.</p>`)); }
+    else {
+      const table = el(`<table class="esth-table"><thead><tr><th>Estilista</th><th>Servicios</th><th style="text-align:right;">Bruto</th><th style="text-align:right;">Desc. insumos</th><th style="text-align:right;">Neto</th></tr></thead><tbody></tbody></table>`);
+      const tbody = table.querySelector('tbody');
+      t.porEstilista.forEach(r => tbody.appendChild(el(`<tr><td>${r.nombre}</td><td>${r.servicios}</td>
+        <td class="esth-money" style="text-align:right;">${money(r.bruto)}</td>
+        <td class="esth-money" style="text-align:right;">${money(r.descuento)}</td>
+        <td class="esth-money" style="text-align:right;font-weight:600;">${money(r.bruto-r.descuento)}</td></tr>`)));
+      stTable.appendChild(table);
+    }
+
+    const movBox = wrap.querySelector('#movs-table');
+    if (t.today.length === 0){ movBox.appendChild(el(`<p class="esth-empty">No hay movimientos hoy en esta sucursal.</p>`)); }
+    else {
+      const table = el(`<table class="esth-table"><thead><tr><th>Tipo</th><th>Detalle</th><th style="text-align:right;">Monto</th></tr></thead><tbody></tbody></table>`);
+      const tbody = table.querySelector('tbody');
+      t.today.forEach(m => {
+        let tag, detail, amt;
+        if (m.type === 'servicio'){ tag='Servicio'; detail = `${m.serviceName} · ${m.stylistName} · ${m.method}`; amt = m.price; }
+        else if (m.type === 'producto'){ tag='Producto'; detail = m.name; amt = m.price; }
+        else { tag='Gasto'; detail = m.concept; amt = -m.amount; }
+        tbody.appendChild(el(`<tr><td><span class="esth-tag">${tag}</span></td><td>${detail}</td>
+          <td class="esth-money" style="text-align:right;">${amt<0?'-':''}${money(Math.abs(amt))}</td></tr>`));
+      });
+      movBox.appendChild(table);
+    }
+
+    wrap.querySelector('#export-xlsx').onclick = () => {
+      if (typeof XLSX === 'undefined'){ alert('No se pudo cargar el módulo de Excel. Revisa tu conexión.'); return; }
+      const movRows = [['Tipo','Detalle','Estilista','Método','Monto']];
+      t.today.forEach(m => {
+        if (m.type === 'servicio') movRows.push(['Servicio', m.serviceName, m.stylistName, m.method, m.price]);
+        else if (m.type === 'producto') movRows.push(['Producto', m.name, '', '', m.price]);
+        else movRows.push(['Gasto', m.concept, '', '', -m.amount]);
+      });
+      const stRows = [['Estilista','Servicios','Bruto','Descuento insumos','Neto']];
+      t.porEstilista.forEach(r => stRows.push([r.nombre, r.servicios, r.bruto, r.descuento, r.bruto-r.descuento]));
+      const resumenRows = [['Concepto','Monto'],
+        ['Total servicios', t.totalServicios], ['Ventas productos', t.totalProductos],
+        ['Gastos', t.totalGastos], ['Baucher', t.totalBaucher], ['Efectivo neto', t.efectivoNeto], ['Total universal', t.totalUniversal]];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumenRows), 'Resumen');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(stRows), 'Por estilista');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(movRows), 'Movimientos');
+      XLSX.writeFile(wb, `corte-caja-${b.name.replace(/\s+/g,'-')}-${new Date().toISOString().slice(0,10)}.xlsx`);
+    };
+    return wrap;
+  }
+
+  function adminPrecios(b){
+    const wrap = el(`<div>
+      <div class="esth-card" style="margin-bottom:18px;">
+        <p class="esth-legend" style="font-weight:600;margin-bottom:10px;">Agregar servicio</p>
+        <div class="esth-grid2">
+          <div class="esth-field"><label>Nombre</label><input id="new-name" type="text" placeholder="Ej. Peinado"/></div>
+          <div class="esth-field"><label>Categoría</label><input id="new-cat" type="text" placeholder="Ej. Corte y Peinado"/></div>
+        </div>
+        <div class="esth-row" style="align-items:flex-end;gap:14px;">
+          <div class="esth-field" style="flex:1;"><label>Precio (dejar vacío = variable)</label><input id="new-price" type="number" min="0" step="1" placeholder="0"/></div>
+          <button class="esth-btn" id="add-service" style="margin-bottom:12px;">Agregar</button>
+        </div>
+      </div>
+      <table class="esth-table"><thead><tr><th>Servicio</th><th>Categoría</th><th>Precio</th><th></th></tr></thead><tbody id="svc-body"></tbody></table>
+    </div>`);
+    wrap.querySelector('#add-service').onclick = async () => {
+      const name = wrap.querySelector('#new-name').value.trim();
+      const cat = wrap.querySelector('#new-cat').value.trim() || 'General';
+      const priceRaw = wrap.querySelector('#new-price').value;
+      if (!name) return;
+      const isVar = priceRaw === '';
+      b.services.push(svc(uid('s'), name, isVar ? 0 : parseFloat(priceRaw), cat, isVar));
+      await save(); render();
+    };
+    const tbody = wrap.querySelector('#svc-body');
+    if (b.services.length === 0) tbody.appendChild(el(`<tr><td colspan="4" class="esth-empty">Aún no hay servicios.</td></tr>`));
+    b.services.forEach(s => {
+      const row = el(`<tr>
+        <td><input type="text" value="${s.name}" style="border:none;background:none;width:100%;font-size:13px;font-family:inherit;color:var(--ink);"/></td>
+        <td><input type="text" value="${s.category}" style="border:none;background:none;width:100%;font-size:13px;font-family:inherit;color:var(--ink);"/></td>
+        <td>${s.variable ? '<span class="esth-hint">Variable</span>' : `<input type="number" value="${s.price}" min="0" style="border:none;background:none;width:75px;font-size:13px;font-family:inherit;color:var(--ink);"/>`}</td>
+        <td style="text-align:right;"><button class="esth-icon-btn">Eliminar</button></td>
+      </tr>`);
+      const inputs = row.querySelectorAll('input');
+      inputs[0].onchange = async () => { s.name = inputs[0].value.trim() || s.name; await save(); };
+      inputs[1].onchange = async () => { s.category = inputs[1].value.trim() || s.category; await save(); };
+      if (inputs[2]) inputs[2].onchange = async () => { const v = parseFloat(inputs[2].value); if(!isNaN(v)&&v>=0){ s.price = v; await save(); } };
+      row.querySelector('button').onclick = async () => { b.services = b.services.filter(x => x.id !== s.id); await save(); render(); };
+      tbody.appendChild(row);
+    });
+    return wrap;
+  }
+
+  function adminEstilistas(b){
+    const wrap = el(`<div>
+      <div class="esth-card" style="margin-bottom:18px;">
+        <p class="esth-legend" style="font-weight:600;margin-bottom:10px;">Agregar estilista</p>
+        <div class="esth-field"><label>Nombre</label><input id="new-stylist" type="text" placeholder="Nombre"/></div>
+        <button class="esth-btn" id="add-stylist">Agregar</button>
+      </div>
+      <table class="esth-table"><thead><tr><th>Nombre</th><th></th></tr></thead><tbody id="sty-body"></tbody></table>
+    </div>`);
+    wrap.querySelector('#add-stylist').onclick = async () => {
+      const name = wrap.querySelector('#new-stylist').value.trim();
+      if (!name) return;
+      b.stylists.push({ id: uid('e'), name });
+      await save(); render();
+    };
+    const tbody = wrap.querySelector('#sty-body');
+    if (b.stylists.length === 0) tbody.appendChild(el(`<tr><td colspan="2" class="esth-empty">Aún no hay estilistas.</td></tr>`));
+    b.stylists.forEach(e => {
+      const row = el(`<tr><td><input type="text" value="${e.name}" style="border:none;background:none;width:100%;font-size:13px;font-family:inherit;color:var(--ink);"/></td>
+        <td style="text-align:right;"><button class="esth-icon-btn">Eliminar</button></td></tr>`);
+      row.querySelector('input').onchange = async (ev) => { e.name = ev.target.value.trim() || e.name; await save(); };
+      row.querySelector('button').onclick = async () => { b.stylists = b.stylists.filter(x => x.id !== e.id); await save(); render(); };
+      tbody.appendChild(row);
+    });
+    return wrap;
+  }
+
+  function adminSucursales(){
+    const wrap = el(`<div>
+      <div class="esth-card" style="margin-bottom:18px;">
+        <p class="esth-legend" style="font-weight:600;margin-bottom:10px;">Agregar sucursal</p>
+        <div class="esth-field"><label>Nombre</label><input id="new-branch-name" type="text" placeholder="Ej. Sucursal Sur"/></div>
+        <div class="esth-field"><label>Dirección (opcional)</label><input id="new-branch-addr" type="text" placeholder="Dirección"/></div>
+        <button class="esth-btn" id="add-branch">Agregar sucursal</button>
+      </div>
+      <table class="esth-table"><thead><tr><th>Sucursal</th><th>Dirección</th><th></th></tr></thead><tbody id="br-body"></tbody></table>
+    </div>`);
+    wrap.querySelector('#add-branch').onclick = async () => {
+      const name = wrap.querySelector('#new-branch-name').value.trim();
+      const addr = wrap.querySelector('#new-branch-addr').value.trim();
+      if (!name) return;
+      state.branches.push({ id: uid('b'), name, address: addr, services: [], stylists: [], sales: [] });
+      await save(); render();
+    };
+    const tbody = wrap.querySelector('#br-body');
+    state.branches.forEach(br => {
+      const row = el(`<tr>
+        <td><input type="text" value="${br.name}" style="border:none;background:none;width:100%;font-size:13px;font-family:inherit;color:var(--ink);"/></td>
+        <td><input type="text" value="${br.address||''}" style="border:none;background:none;width:100%;font-size:13px;font-family:inherit;color:var(--ink);"/></td>
+        <td style="text-align:right;"><button class="esth-icon-btn" ${state.branches.length<=1?'disabled':''}>Eliminar</button></td>
+      </tr>`);
+      const [nameInput, addrInput] = row.querySelectorAll('input');
+      nameInput.onchange = async () => { br.name = nameInput.value.trim() || br.name; await save(); render(); };
+      addrInput.onchange = async () => { br.address = addrInput.value.trim(); await save(); };
+      row.querySelector('button').onclick = async () => { if (state.branches.length<=1) return; state.branches = state.branches.filter(x => x.id !== br.id); await save(); render(); };
+      tbody.appendChild(row);
+    });
+    return wrap;
+  }
+
+  function adminConfig(){
+    const wrap = el(`<div class="esth-card" style="max-width:420px;">
+      <p class="esth-legend" style="font-weight:600;margin-bottom:10px;">Datos generales y acceso</p>
+      <div class="esth-field"><label>Nombre de la cadena</label><input id="cfg-chain" type="text" value="${state.chainName}"/></div>
+      <div class="esth-field"><label>Usuario administrador</label><input id="cfg-user" type="text" value="${state.admin.user}"/></div>
+      <div class="esth-field"><label>Contraseña administrador</label><input id="cfg-pass" type="text" value="${state.admin.pass}"/></div>
+      <div class="esth-field"><label>PIN para autorizar cambios de precio</label><input id="cfg-pin" type="text" maxlength="6" value="${state.admin.pin}"/></div>
+      <button class="esth-btn" id="cfg-save">Guardar cambios</button>
+      <div id="cfg-msg"></div>
+    </div>`);
+    wrap.querySelector('#cfg-save').onclick = async () => {
+      state.chainName = wrap.querySelector('#cfg-chain').value.trim() || state.chainName;
+      state.admin.user = wrap.querySelector('#cfg-user').value.trim() || state.admin.user;
+      state.admin.pass = wrap.querySelector('#cfg-pass').value || state.admin.pass;
+      state.admin.pin = wrap.querySelector('#cfg-pin').value.trim() || state.admin.pin;
+      await save();
+      wrap.querySelector('#cfg-msg').innerHTML = '<p class="esth-ok" style="margin-top:12px;">Cambios guardados.</p>';
+    };
+    return wrap;
+  }
+
+  const screens = { home: screenHome, role: screenRole, cashier: screenCashier, adminLogin: screenAdminLogin, admin: screenAdmin };
+
+  (async function init(){
+    root().innerHTML = '<div class="esth-root" style="padding:40px;text-align:center;color:#6E5A5C;">Cargando…</div>';
+    await load();
+    render();
+  })();
+})();
+</script>
+</body>
+</html>
