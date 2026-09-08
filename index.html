@@ -131,7 +131,7 @@
   let view = { screen: 'home', branchId: null, adminTab: 'resumen', error: '', adminUserId: null };
   let pinModal = null;   // { expected, message, error, onConfirm() }
   let cashModal = null;  // { total, onConfirm(recibido) }
-  let ticket = { stylistId: null, items: [] };
+  let ticket = { stylistId: null, stylistExternal: null, items: [] };
   let cashierOpenPanels = { porEstilista: false };
   let pendingInsumos = []; // insumos que se van agregando para el servicio que se está por cobrar
 
@@ -169,7 +169,7 @@
     const pins = [];
     if (state.settings.priceOverridePin) pins.push(state.settings.priceOverridePin);
     state.admins.forEach(a => {
-      if (!a.pin) return;
+      if (!a.pin || a.role === 'cajero') return;
       if (a.role === 'propietario' || (a.branchIds || []).includes(branchId)) pins.push(a.pin);
     });
     return [...new Set(pins)];
@@ -323,7 +323,7 @@
     const list = wrap.querySelector('#branch-list');
     state.branches.forEach(b => {
       const btn = el(`<button class="esth-branch"><span>${b.name}<small>${b.address || ''}</small></span><span>›</span></button>`);
-      btn.onclick = () => { view = { screen: 'role', branchId: b.id, adminTab: 'resumen', error: '', adminUserId: null }; ticket = { stylistId: null, items: [] }; pendingInsumos = []; render(); };
+      btn.onclick = () => { view = { screen: 'role', branchId: b.id, adminTab: 'resumen', error: '', adminUserId: null }; ticket = { stylistId: null, stylistExternal: null, items: [] }; pendingInsumos = []; render(); };
       list.appendChild(btn);
     });
     return wrap;
@@ -365,7 +365,8 @@
     const doLogin = () => {
       const u = wrap.querySelector('#in-user').value.trim();
       const p = wrap.querySelector('#in-pass').value;
-      if (u === b.cashier.user && p === b.cashier.pass){ ticket = { stylistId: null, items: [] }; pendingInsumos = []; view = { ...view, screen: 'cashier', error: '' }; }
+      const cashierAdmin = state.admins.find(a => a.role === 'cajero' && a.user === u && a.pass === p && (a.branchIds||[]).includes(b.id));
+      if ((u === b.cashier.user && p === b.cashier.pass) || cashierAdmin){ ticket = { stylistId: null, stylistExternal: null, items: [] }; pendingInsumos = []; view = { ...view, screen: 'cashier', error: '' }; }
       else view = { ...view, error: 'Usuario o contraseña incorrectos.' };
       render();
     };
@@ -381,7 +382,10 @@
     const categories = [...new Set(b.services.map(s=>s.category))];
     const ticketTotal = ticket.items.reduce((a,i)=>a+i.price,0);
     const lockedStylist = ticket.items.length > 0;
-    const stylistObj = b.stylists.find(e => e.id === ticket.stylistId);
+    const stylistObj = ticket.stylistId ? b.stylists.find(e => e.id === ticket.stylistId) : null;
+    const lockedStylistLabel = ticket.stylistExternal
+      ? `${ticket.stylistExternal.name} — Invitado (${ticket.stylistExternal.origen})`
+      : (stylistObj ? stylistObj.name : '');
 
     const wrap = el(`<div class="esth-screen">
       <div class="esth-top">
@@ -394,9 +398,15 @@
         <p class="esth-legend" style="font-weight:600;font-size:13px;color:var(--wine-dark);margin-bottom:10px;">Cuenta actual</p>
         <div class="esth-field"><label>Estilista</label>
           ${lockedStylist
-            ? `<input type="text" value="${stylistObj ? stylistObj.name : ''}" readonly/>`
-            : `<select id="sel-stylist">${b.stylists.map(e => `<option value="${e.id}">${e.name}</option>`).join('') || '<option value="">Sin estilistas</option>'}</select>`}
+            ? `<input type="text" value="${lockedStylistLabel}" readonly/>`
+            : `<select id="sel-stylist">${b.stylists.map(e => `<option value="${e.id}">${e.name}</option>`).join('') || '<option value="">Sin estilistas</option>'}<option value="__external__">+ Estilista invitado (de otra estética)</option></select>`}
           ${lockedStylist ? '<p class="esth-hint">Vacía la cuenta para cambiar de estilista.</p>' : ''}
+        </div>
+        <div class="esth-field" id="ext-stylist-wrap" style="display:none;">
+          <label>Nombre del estilista invitado</label><input id="ext-stylist-name" type="text" placeholder="Nombre completo"/>
+          <label style="margin-top:8px;">Sucursal / estética de origen</label><input id="ext-stylist-branch" type="text" placeholder="Ej. Estética Bella Rosa, sucursal Centro"/>
+          <p class="esth-hint warn">🔒 Se pedirá el PIN de un encargado o propietario para agregar un servicio a este estilista.</p>
+          <p class="esth-hint" id="ext-stylist-error" style="display:none;color:var(--danger);"></p>
         </div>
         <div class="esth-field"><label>Servicio</label><select id="sel-service">
           ${categories.map(cat => `<optgroup label="${cat}">${b.services.filter(s=>s.category===cat).map(s=>
@@ -478,6 +488,13 @@
     </div>`);
 
     wrap.querySelector('#exit').onclick = () => { view = { screen: 'role', branchId: b.id, error: '' }; pendingInsumos = []; render(); };
+
+    const stylistSel = wrap.querySelector('#sel-stylist');
+    const extWrap = wrap.querySelector('#ext-stylist-wrap');
+    const extError = wrap.querySelector('#ext-stylist-error');
+    if (stylistSel){
+      stylistSel.addEventListener('change', () => { extWrap.style.display = stylistSel.value === '__external__' ? 'block' : 'none'; extError.style.display = 'none'; });
+    }
 
     // live price default + PIN hint
     const serviceSel = wrap.querySelector('#sel-service');
@@ -593,9 +610,30 @@
     // agregar línea (servicio + insumos acumulados) a la cuenta
     wrap.querySelector('#btn-add-line').onclick = () => {
       const opt = serviceSel.selectedOptions[0];
-      const stylistId = lockedStylist ? ticket.stylistId : wrap.querySelector('#sel-stylist').value;
-      const stylist = b.stylists.find(e => e.id === stylistId);
-      if (!opt || !stylist) return;
+      if (!opt) return;
+
+      // resolver estilista: el ya fijado en la cuenta, o uno nuevo (interno o invitado externo)
+      let stylist = null, isNewExternal = false, extName = '', extOrigen = '';
+      if (lockedStylist){
+        if (ticket.stylistExternal){ extName = ticket.stylistExternal.name; extOrigen = ticket.stylistExternal.origen; }
+        else stylist = b.stylists.find(e => e.id === ticket.stylistId);
+      } else {
+        const selVal = stylistSel.value;
+        if (selVal === '__external__'){
+          extName = wrap.querySelector('#ext-stylist-name').value.trim();
+          extOrigen = wrap.querySelector('#ext-stylist-branch').value.trim();
+          if (!extName || !extOrigen){
+            extError.textContent = 'Ingresa el nombre del estilista invitado y la sucursal/estética de origen.';
+            extError.style.display = 'block';
+            return;
+          }
+          isNewExternal = true;
+        } else {
+          stylist = b.stylists.find(e => e.id === selVal);
+        }
+      }
+      if (!stylist && !extName) return;
+
       const isVar = opt.dataset.variable === 'true';
       const base = parseFloat(opt.dataset.price);
       const monto = parseFloat(montoInput.value);
@@ -603,25 +641,31 @@
       const insumosUsados = pendingInsumos.slice();
       const descuentoInsumos = insumosUsados.reduce((a, p) => a + p.monto, 0);
       const serviceName = opt.textContent.split(' — ')[0].replace(' (precio variable)','');
+
       const addLine = () => {
-        if (!lockedStylist) ticket.stylistId = stylist.id;
+        if (!lockedStylist){
+          if (isNewExternal){ ticket.stylistExternal = { name: extName, origen: extOrigen }; ticket.stylistId = null; }
+          else { ticket.stylistId = stylist.id; ticket.stylistExternal = null; }
+        }
         ticket.items.push({ id: uid('t'), serviceName, basePrice: isVar ? null : base, price: monto, descuentoInsumos, insumosUsados });
         pendingInsumos = [];
         render();
       };
-      const needsPrice = !isVar && monto !== base && needsPriceAuth(b);
-      const needsInsumo = insumosUsados.some(p => p.overridden) && needsPriceAuth(b);
+
+      // autorizaciones necesarias, en orden: estilista invitado nuevo, precio distinto al base, insumo distinto al calculado
       const validPins = getValidAuthPins(b.id);
-      if (needsPrice){
-        pinModal = { expectedList: validPins, message: 'El monto (' + money(monto) + ') difiere del precio base (' + money(base) + ') de "' + serviceName + '". Autoriza con PIN (dueño o encargado).', onConfirm: () => {
-          if (needsInsumo){ pinModal = { expectedList: validPins, message: 'Uno o más montos de insumo no coinciden con el cálculo automático. Autoriza con PIN (dueño o encargado).', onConfirm: addLine }; render(); }
-          else addLine();
-        } };
+      const steps = [];
+      if (isNewExternal) steps.push('Vas a registrar un servicio para "' + extName + '", estilista invitado de "' + extOrigen + '". Autoriza con el PIN de un encargado o propietario.');
+      if (!isVar && monto !== base && needsPriceAuth(b)) steps.push('El monto (' + money(monto) + ') difiere del precio base (' + money(base) + ') de "' + serviceName + '". Autoriza con PIN (dueño o encargado).');
+      if (insumosUsados.some(p => p.overridden) && needsPriceAuth(b)) steps.push('Uno o más montos de insumo no coinciden con el cálculo automático. Autoriza con PIN (dueño o encargado).');
+
+      const runSteps = (idx) => {
+        if (idx >= steps.length){ addLine(); return; }
+        if (validPins.length === 0){ runSteps(idx + 1); return; } // sin PIN configurado, no se puede pedir autorización
+        pinModal = { expectedList: validPins, message: steps[idx], onConfirm: () => runSteps(idx + 1) };
         render();
-      } else if (needsInsumo){
-        pinModal = { expectedList: validPins, message: 'Uno o más montos de insumo no coinciden con el cálculo automático. Autoriza con PIN (dueño o encargado).', onConfirm: addLine };
-        render();
-      } else { addLine(); }
+      };
+      runSteps(0);
     };
 
     // tabla de la cuenta actual
@@ -634,7 +678,7 @@
         const row = el(`<tr><td>${i.serviceName}${insumosResumen ? `<br><span style="font-size:11px;color:var(--ink-soft);">Insumos: ${insumosResumen} (${money(i.descuentoInsumos||0)})</span>` : ''}</td>
           <td class="esth-money" style="text-align:right;vertical-align:top;">${money(i.price)}</td>
           <td style="text-align:right;vertical-align:top;"><button class="esth-icon-btn">Quitar</button></td></tr>`);
-        row.querySelector('button').onclick = () => { ticket.items = ticket.items.filter(x => x.id !== i.id); if (ticket.items.length===0) ticket.stylistId = null; render(); };
+        row.querySelector('button').onclick = () => { ticket.items = ticket.items.filter(x => x.id !== i.id); if (ticket.items.length===0){ ticket.stylistId = null; ticket.stylistExternal = null; } render(); };
         tbody.appendChild(row);
       });
       ticketBox.appendChild(table);
@@ -646,14 +690,17 @@
     const methodSel = wrap.querySelector('#sel-method');
     wrap.querySelector('#btn-cobrar').onclick = () => {
       if (ticket.items.length === 0) return;
-      const stylist = b.stylists.find(e => e.id === ticket.stylistId);
+      const stylist = ticket.stylistId ? b.stylists.find(e => e.id === ticket.stylistId) : null;
+      const stylistNameForSale = ticket.stylistExternal
+        ? `${ticket.stylistExternal.name} (invitado — ${ticket.stylistExternal.origen})`
+        : (stylist ? stylist.name : '—');
       const finish = async (cashReceived) => {
         const ticketId = uid('tk');
         ticket.items.forEach(i => {
           b.sales.unshift({ id: uid('v'), type: 'servicio', serviceName: i.serviceName, basePrice: i.basePrice, price: i.price,
-            stylistName: stylist ? stylist.name : '—', method: methodSel.value, cashReceived, descuentoInsumos: i.descuentoInsumos, ticketId, date: new Date().toISOString() });
+            stylistName: stylistNameForSale, externalStylist: ticket.stylistExternal || null, method: methodSel.value, cashReceived, descuentoInsumos: i.descuentoInsumos, ticketId, date: new Date().toISOString() });
         });
-        ticket = { stylistId: null, items: [] };
+        ticket = { stylistId: null, stylistExternal: null, items: [] };
         await save(); render();
       };
       if (methodSel.value === 'Efectivo'){ cashModal = { total: ticketTotal, onConfirm: (recibido) => finish(recibido) }; render(); }
@@ -749,6 +796,7 @@
       const p = wrap.querySelector('#in-pass').value;
       const match = state.admins.find(a => a.user === u && a.pass === p);
       if (!match) { view = { ...view, error: 'Usuario o contraseña incorrectos.' }; render(); return; }
+      if (match.role === 'cajero'){ view = { ...view, error: 'Este usuario es de tipo Cajero: entra por la opción "Cajero" en la pantalla anterior.' }; render(); return; }
       if (match.role !== 'propietario' && !match.branchIds.includes(b.id)){ view = { ...view, error: 'Este usuario no tiene autorización para administrar esta sucursal.' }; render(); return; }
       view = { ...view, screen: 'admin', adminTab: 'resumen', error: '', adminUserId: match.id };
       render();
@@ -1055,36 +1103,38 @@
           <div class="esth-field"><label>Contraseña</label><input id="new-adm-pass" type="text"/></div>
         </div>
         <div class="esth-field"><label>Rol</label><select id="new-adm-role">
+          <option value="cajero">Cajero (solo cobra, sucursales seleccionadas)</option>
           <option value="encargado">Encargado (solo sucursales seleccionadas)</option>
           <option value="propietario">Propietario (todas las sucursales)</option>
         </select></div>
-        <div class="esth-field" id="branch-check-wrap"><label>Sucursales que puede administrar</label>
+        <div class="esth-field" id="branch-check-wrap"><label>Sucursales que puede administrar / donde puede cobrar</label>
           <div style="display:flex;flex-direction:column;gap:6px;">
             ${state.branches.map(br => `<label style="font-size:13px;display:flex;gap:6px;align-items:center;">
               <input type="checkbox" class="new-adm-branch" value="${br.id}"/> ${br.name}</label>`).join('')}
           </div>
         </div>
-        <div class="esth-field"><label>PIN de autorización (opcional, para autorizar precios/insumos en caja)</label><input id="new-adm-pin" type="text" maxlength="10"/></div>
+        <div class="esth-field" id="new-adm-pin-wrap"><label>PIN de autorización (opcional, solo aplica a encargados/propietarios para autorizar precios/insumos en caja)</label><input id="new-adm-pin" type="text" maxlength="10"/></div>
         <button class="esth-btn" id="create-adm">Crear administrador</button>
         <div id="create-adm-msg"></div>
       </div>
     </div>`);
 
     const tbody = wrap.querySelector('#adm-body');
+    const roleLabel = (r) => r === 'propietario' ? 'Propietario' : r === 'cajero' ? 'Cajero' : 'Encargado';
     state.admins.forEach(a => {
       const branchNames = a.role === 'propietario' ? 'Todas' : a.branchIds.map(id => (state.branches.find(x=>x.id===id)||{}).name).filter(Boolean).join(', ') || '—';
       const row = el(`<tr>
         <td><input type="text" value="${a.user}" style="border:none;background:none;width:100%;font-size:13px;font-family:inherit;color:var(--ink);"/></td>
         <td><input type="text" value="${a.pass}" style="border:none;background:none;width:90px;font-size:13px;font-family:inherit;color:var(--ink);"/></td>
-        <td>${a.role === 'propietario' ? 'Propietario' : 'Encargado'}</td>
+        <td>${roleLabel(a.role)}</td>
         <td>${branchNames}</td>
-        <td><input type="text" value="${a.pin||''}" maxlength="10" placeholder="Sin PIN" style="border:none;background:none;width:80px;font-size:13px;font-family:inherit;color:var(--ink);letter-spacing:2px;"/></td>
+        <td>${a.role === 'cajero' ? '—' : `<input type="text" value="${a.pin||''}" maxlength="10" placeholder="Sin PIN" style="border:none;background:none;width:80px;font-size:13px;font-family:inherit;color:var(--ink);letter-spacing:2px;"/>`}</td>
         <td style="text-align:right;"><button class="esth-icon-btn" ${state.admins.length<=1?'disabled':''}>Eliminar</button></td>
       </tr>`);
       const [userInput, passInput, pinInput] = row.querySelectorAll('input');
       userInput.onchange = async () => { a.user = userInput.value.trim() || a.user; await save(); };
       passInput.onchange = async () => { a.pass = passInput.value || a.pass; await save(); };
-      pinInput.onchange = async () => { a.pin = pinInput.value.trim(); await save(); };
+      if (pinInput) pinInput.onchange = async () => { a.pin = pinInput.value.trim(); await save(); };
       row.querySelector('button').onclick = async () => {
         if (state.admins.length<=1) return;
         state.admins = state.admins.filter(x => x.id !== a.id);
@@ -1095,17 +1145,23 @@
 
     const roleSel = wrap.querySelector('#new-adm-role');
     const branchWrap = wrap.querySelector('#branch-check-wrap');
-    roleSel.addEventListener('change', () => { branchWrap.style.opacity = roleSel.value === 'propietario' ? '0.4' : '1'; });
+    const pinWrap = wrap.querySelector('#new-adm-pin-wrap');
+    const syncRoleFields = () => {
+      branchWrap.style.opacity = roleSel.value === 'propietario' ? '0.4' : '1';
+      pinWrap.style.display = roleSel.value === 'cajero' ? 'none' : 'block';
+    };
+    roleSel.addEventListener('change', syncRoleFields);
+    syncRoleFields();
 
     wrap.querySelector('#create-adm').onclick = () => {
       const user = wrap.querySelector('#new-adm-user').value.trim();
       const pass = wrap.querySelector('#new-adm-pass').value;
-      const pin = wrap.querySelector('#new-adm-pin').value.trim();
+      const pin = roleSel.value === 'cajero' ? '' : wrap.querySelector('#new-adm-pin').value.trim();
       const role = roleSel.value;
       const branchIds = Array.from(wrap.querySelectorAll('.new-adm-branch:checked')).map(c => c.value);
       if (!user || !pass) return;
-      if (role === 'encargado' && branchIds.length === 0){
-        wrap.querySelector('#create-adm-msg').innerHTML = '<p class="esth-error" style="margin-top:10px;">Selecciona al menos una sucursal para un encargado.</p>';
+      if (role !== 'propietario' && branchIds.length === 0){
+        wrap.querySelector('#create-adm-msg').innerHTML = '<p class="esth-error" style="margin-top:10px;">Selecciona al menos una sucursal.</p>';
         return;
       }
       pinModal = {
