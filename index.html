@@ -85,20 +85,21 @@
 <div id="esth-app" class="esth-root"></div>
 <script>
 (function(){
-  const STORAGE_KEY = 'salon-chain-data-v5';
-  const OLD_STORAGE_KEY = 'salon-chain-data-v4';
+  const STORAGE_KEY = 'salon-chain-data-v6';
+  const V5_STORAGE_KEY = 'salon-chain-data-v5';
+  const V4_STORAGE_KEY = 'salon-chain-data-v4';
 
   const svc = (id,name,price,category,variable) => ({ id, name, category, price: variable ? null : price, variable: !!variable });
 
   const defaultState = () => ({
     chainName: 'Mi Cadena de Estéticas',
     settings: { masterPin: '130908', priceOverridePin: '' },
-    admins: [ { id: 'a1', user: 'admin', pass: '1234', role: 'propietario', branchIds: [] } ],
+    admins: [ { id: 'a1', user: 'admin', pass: '1234', role: 'propietario', branchIds: [], pin: '' } ],
     branches: [
       { id: 'b1', name: 'Sucursal 1', address: '',
         cashier: { user: 'cajero', pass: '1234' },
         services: [], stylists: [], sales: [], products: [],
-        insumos: { items: [], decolorantePorGramo: null }
+        insumos: { items: [] }
       }
     ]
   });
@@ -113,29 +114,82 @@
     return old;
   }
 
+  function migrateFromV5(old){
+    (old.branches || []).forEach(b => {
+      if (!b.insumos) b.insumos = { items: [] };
+      (b.insumos.items || []).forEach(it => { if (!it.mode) it.mode = 'fijo'; });
+      if (b.insumos.decolorantePorGramo !== undefined && b.insumos.decolorantePorGramo !== null){
+        b.insumos.items = b.insumos.items || [];
+        b.insumos.items.push({ id: uid('f'), label: 'Decolorante', mode: 'cantidad', unit: 'gramo', price: b.insumos.decolorantePorGramo });
+      }
+      delete b.insumos.decolorantePorGramo;
+    });
+    return old;
+  }
+
   let state = null;
   let view = { screen: 'home', branchId: null, adminTab: 'resumen', error: '', adminUserId: null };
   let pinModal = null;   // { expected, message, error, onConfirm() }
   let cashModal = null;  // { total, onConfirm(recibido) }
   let ticket = { stylistId: null, items: [] };
   let cashierOpenPanels = { porEstilista: false };
+  let pendingInsumos = []; // insumos que se van agregando para el servicio que se está por cobrar
+
+  function pendingInsumosTotal(){ return pendingInsumos.reduce((a, p) => a + p.monto, 0); }
+
+  // Acepta enteros, decimales (9.1), fracciones (1/8) y números mixtos (7 1/2) para cantidades de insumo.
+  function parseQty(raw){
+    if (raw == null) return NaN;
+    const s = String(raw).trim().replace(',', '.');
+    if (s === '') return NaN;
+    const mixed = s.match(/^(-?\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
+    if (mixed){
+      const whole = parseFloat(mixed[1]), num = parseFloat(mixed[2]), den = parseFloat(mixed[3]);
+      if (!den) return NaN;
+      const frac = num / den;
+      return whole < 0 ? whole - frac : whole + frac;
+    }
+    const frac = s.match(/^(-?\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
+    if (frac){
+      const num = parseFloat(frac[1]), den = parseFloat(frac[2]);
+      if (!den) return NaN;
+      return num / den;
+    }
+    const val = parseFloat(s);
+    return isNaN(val) ? NaN : val;
+  }
 
   const uid = (p) => p + Math.random().toString(36).slice(2, 8);
   const money = (n) => '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const todayStr = () => new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
   const isToday = (iso) => { const d = new Date(iso), t = new Date(); return d.toDateString() === t.toDateString(); };
-  const needsPriceAuth = () => !!(state.settings.priceOverridePin && state.settings.priceOverridePin.length > 0);
+  // Devuelve todos los PIN válidos para autorizar un cambio de precio/insumo en una sucursal:
+  // el PIN maestro de autorización (dueños) + el PIN personal de cualquier encargado/propietario con acceso a esa sucursal.
+  function getValidAuthPins(branchId){
+    const pins = [];
+    if (state.settings.priceOverridePin) pins.push(state.settings.priceOverridePin);
+    state.admins.forEach(a => {
+      if (!a.pin) return;
+      if (a.role === 'propietario' || (a.branchIds || []).includes(branchId)) pins.push(a.pin);
+    });
+    return [...new Set(pins)];
+  }
+  const needsPriceAuth = (b) => getValidAuthPins(b.id).length > 0;
+
+  function normalizeState(){
+    (state.admins || []).forEach(a => { if (a.pin === undefined || a.pin === null) a.pin = ''; });
+  }
 
   async function save(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){ console.error('storage set failed', e); } }
   async function load(){
     try{
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw){ state = JSON.parse(raw); }
-      else {
-        const oldRaw = localStorage.getItem(OLD_STORAGE_KEY);
-        if (oldRaw){ state = migrateFromV4(JSON.parse(oldRaw)); await save(); }
-        else { state = defaultState(); }
-      }
+      if (raw){ state = JSON.parse(raw); normalizeState(); return; }
+      const raw5 = localStorage.getItem(V5_STORAGE_KEY);
+      if (raw5){ state = migrateFromV5(JSON.parse(raw5)); normalizeState(); await save(); return; }
+      const raw4 = localStorage.getItem(V4_STORAGE_KEY);
+      if (raw4){ state = migrateFromV5(migrateFromV4(JSON.parse(raw4))); normalizeState(); await save(); return; }
+      state = defaultState();
     } catch(e){ state = defaultState(); }
   }
 
@@ -250,7 +304,8 @@
     wrap.querySelector('#pin-cancel').onclick = () => { pinModal = null; render(); };
     const doConfirm = () => {
       const val = wrap.querySelector('#pin-in').value;
-      if (val === pinModal.expected){ const fn = pinModal.onConfirm; pinModal = null; fn(); }
+      const valid = pinModal.expectedList ? (val && pinModal.expectedList.includes(val)) : val === pinModal.expected;
+      if (valid){ const fn = pinModal.onConfirm; pinModal = null; fn(); }
       else { pinModal = { ...pinModal, error: 'PIN incorrecto.' }; render(); }
     };
     wrap.querySelector('#pin-ok').onclick = doConfirm;
@@ -268,7 +323,7 @@
     const list = wrap.querySelector('#branch-list');
     state.branches.forEach(b => {
       const btn = el(`<button class="esth-branch"><span>${b.name}<small>${b.address || ''}</small></span><span>›</span></button>`);
-      btn.onclick = () => { view = { screen: 'role', branchId: b.id, adminTab: 'resumen', error: '', adminUserId: null }; ticket = { stylistId: null, items: [] }; render(); };
+      btn.onclick = () => { view = { screen: 'role', branchId: b.id, adminTab: 'resumen', error: '', adminUserId: null }; ticket = { stylistId: null, items: [] }; pendingInsumos = []; render(); };
       list.appendChild(btn);
     });
     return wrap;
@@ -310,7 +365,7 @@
     const doLogin = () => {
       const u = wrap.querySelector('#in-user').value.trim();
       const p = wrap.querySelector('#in-pass').value;
-      if (u === b.cashier.user && p === b.cashier.pass){ ticket = { stylistId: null, items: [] }; view = { ...view, screen: 'cashier', error: '' }; }
+      if (u === b.cashier.user && p === b.cashier.pass){ ticket = { stylistId: null, items: [] }; pendingInsumos = []; view = { ...view, screen: 'cashier', error: '' }; }
       else view = { ...view, error: 'Usuario o contraseña incorrectos.' };
       render();
     };
@@ -348,19 +403,25 @@
             `<option value="${s.id}" data-price="${s.price ?? ''}" data-variable="${s.variable}">${s.name}${s.variable ? ' (precio variable)' : ' — '+money(s.price)}</option>`).join('')}</optgroup>`).join('') || '<option value="">Sin servicios</option>'}
         </select></div>
         <div class="esth-field"><label>Monto a cobrar ($)</label><input id="in-monto" type="number" min="0" step="0.5"/>
-          <p class="esth-hint warn" id="pin-hint" style="display:none;">🔒 Este precio difiere del precio base${needsPriceAuth() ? ': se pedirá PIN de administrador.' : '.'}</p>
+          <p class="esth-hint warn" id="pin-hint" style="display:none;">🔒 Este precio difiere del precio base${needsPriceAuth(b) ? ': se pedirá PIN de autorización.' : '.'}</p>
         </div>
         <div class="esth-fieldset">
-          <p class="esth-legend">Descuento de insumos (opcional, para este servicio)</p>
+          <p class="esth-legend">Insumos usados en este servicio (agrega uno por uno: tintes, decolorante, etc. — se van sumando)</p>
           <div class="esth-field"><label>Insumo</label><select id="in-insumo">
-            <option value="0">Sin descuento</option>
-            ${b.insumos.items.map(f => `<option value="${f.price}">${f.label} (${money(f.price)})</option>`).join('')}
+            <option value="">Selecciona un insumo…</option>
+            ${b.insumos.items.map(f => `<option value="${f.id}" data-mode="${f.mode}" data-price="${f.price}" data-unit="${f.unit||''}" data-label="${f.label}">${f.label}${f.mode==='cantidad' ? ' (' + money(f.price) + ' / ' + (f.unit==='ml'?'ml':'g') + ')' : ' (' + money(f.price) + ')'}</option>`).join('')}
           </select></div>
-          <div class="esth-field"><label>Monto de insumo ($)</label><input id="in-insumo-monto" type="number" min="0" step="0.5" value="0"/>
-            <p class="esth-hint warn" id="insumo-pin-hint" style="display:none;">🔒 Este monto no coincide con el insumo seleccionado${needsPriceAuth() ? ': se pedirá PIN de administrador.' : '.'}</p>
+          <div class="esth-field" id="insumo-qty-wrap" style="display:none;"><label id="insumo-qty-label">Cantidad</label>
+            <input id="in-insumo-qty" type="text" inputmode="decimal" placeholder="Ej. 7 1/2, 3/4, 1/8, 45"/>
+            <p class="esth-hint">Puedes escribir fracciones (1/2, 3/4, 1/8), mixtos (7 1/2) o decimales (9.1).</p>
           </div>
-          <div class="esth-field"><label>Gramos decolorante</label><input id="in-decolorante" type="number" min="0" placeholder="0"/></div>
-          <p class="esth-hint" id="insumos-total">Descuento total de insumos: ${money(0)}</p>
+          <div class="esth-field"><label>Monto de esta línea ($)</label><input id="in-insumo-monto" type="number" min="0" step="0.5" value="0"/>
+            <p class="esth-hint warn" id="insumo-pin-hint" style="display:none;">🔒 Este monto no coincide con el cálculo automático${needsPriceAuth(b) ? ': se pedirá PIN de autorización.' : '.'}</p>
+          </div>
+          <p class="esth-hint" id="insumo-line-error" style="display:none;color:var(--danger);"></p>
+          <button class="esth-btn secondary block" id="btn-add-insumo-line" type="button">+ Agregar insumo a este servicio</button>
+          <div id="insumo-list" style="margin-top:10px;"></div>
+          <p class="esth-hint" id="insumos-total" style="font-weight:600;margin-top:6px;">Descuento total de insumos: ${money(pendingInsumosTotal())}</p>
         </div>
         <button class="esth-btn secondary block" id="btn-add-line" ${b.services.length===0||b.stylists.length===0?'disabled':''}>+ Agregar a la cuenta</button>
 
@@ -416,7 +477,7 @@
       <div id="movs" class="esth-card"></div>
     </div>`);
 
-    wrap.querySelector('#exit').onclick = () => { view = { screen: 'role', branchId: b.id, error: '' }; render(); };
+    wrap.querySelector('#exit').onclick = () => { view = { screen: 'role', branchId: b.id, error: '' }; pendingInsumos = []; render(); };
 
     // live price default + PIN hint
     const serviceSel = wrap.querySelector('#sel-service');
@@ -445,29 +506,91 @@
     const insumoSel = wrap.querySelector('#in-insumo');
     const insumoMontoInput = wrap.querySelector('#in-insumo-monto');
     const insumoPinHint = wrap.querySelector('#insumo-pin-hint');
-    const decoInput = wrap.querySelector('#in-decolorante');
+    const insumoLineError = wrap.querySelector('#insumo-line-error');
+    const qtyWrap = wrap.querySelector('#insumo-qty-wrap');
+    const qtyLabel = wrap.querySelector('#insumo-qty-label');
+    const qtyInput = wrap.querySelector('#in-insumo-qty');
     const insumosLabel = wrap.querySelector('#insumos-total');
-    const applyInsumoDefault = () => { insumoMontoInput.value = parseFloat(insumoSel.value) || 0; updateInsumoPinHint(); calcInsumos(); };
-    const updateInsumoPinHint = () => {
-      const base = parseFloat(insumoSel.value) || 0;
-      const current = parseFloat(insumoMontoInput.value);
-      const differs = !isNaN(current) && current !== base;
-      insumoPinHint.style.display = differs ? 'block' : 'none';
+
+    // calcula el subtotal automático de la línea actual (insumo + cantidad); NaN si la cantidad es inválida
+    const computeInsumoBase = () => {
+      const opt = insumoSel.selectedOptions[0];
+      if (!opt || !opt.value) return 0;
+      const price = parseFloat(opt.dataset.price) || 0;
+      if (opt.dataset.mode === 'cantidad'){
+        const qty = parseQty(qtyInput.value);
+        return isNaN(qty) ? NaN : price * qty;
+      }
+      return price;
     };
-    const calcInsumos = () => {
-      const insumo = parseFloat(insumoMontoInput.value) || 0;
-      const gramos = parseFloat(decoInput.value) || 0;
-      const porGramo = parseFloat(b.insumos.decolorantePorGramo) || 0;
-      const total = insumo + gramos * porGramo;
-      insumosLabel.textContent = 'Descuento total de insumos: ' + money(total);
-      return total;
+    const updateQtyVisibility = () => {
+      const opt = insumoSel.selectedOptions[0];
+      if (opt && opt.value && opt.dataset.mode === 'cantidad'){
+        qtyWrap.style.display = 'block';
+        qtyLabel.textContent = 'Cantidad (' + (opt.dataset.unit === 'ml' ? 'ml' : 'gramos') + ')';
+      } else { qtyWrap.style.display = 'none'; }
+    };
+    const updateInsumoPinHint = () => {
+      const base = computeInsumoBase();
+      const current = parseFloat(insumoMontoInput.value);
+      insumoPinHint.style.display = (!isNaN(base) && !isNaN(current) && current !== base) ? 'block' : 'none';
+    };
+    const applyInsumoDefault = () => {
+      updateQtyVisibility();
+      const base = computeInsumoBase();
+      insumoMontoInput.value = isNaN(base) ? '' : base;
+      updateInsumoPinHint();
     };
     insumoSel.addEventListener('change', applyInsumoDefault);
-    insumoMontoInput.addEventListener('input', () => { updateInsumoPinHint(); calcInsumos(); });
-    decoInput.addEventListener('input', calcInsumos);
+    qtyInput.addEventListener('input', applyInsumoDefault);
+    insumoMontoInput.addEventListener('input', updateInsumoPinHint);
     applyInsumoDefault();
 
-    // agregar línea a la cuenta
+    const renderInsumoList = () => {
+      const listBox = wrap.querySelector('#insumo-list');
+      listBox.innerHTML = '';
+      if (pendingInsumos.length === 0){
+        listBox.appendChild(el(`<p class="esth-empty" style="padding:8px 0;">Aún no agregas insumos a este servicio.</p>`));
+      } else {
+        const table = el(`<table class="esth-table"><tbody></tbody></table>`);
+        const tbody = table.querySelector('tbody');
+        pendingInsumos.forEach(p => {
+          const qtyText = p.mode === 'cantidad' ? ` — ${p.qtyRaw}${p.unit === 'ml' ? 'ml' : 'g'}` : '';
+          const row = el(`<tr><td>${p.label}${qtyText}</td>
+            <td class="esth-money" style="text-align:right;">${money(p.monto)}</td>
+            <td style="text-align:right;"><button class="esth-icon-btn">Quitar</button></td></tr>`);
+          row.querySelector('button').onclick = () => { pendingInsumos = pendingInsumos.filter(x => x.id !== p.id); render(); };
+          tbody.appendChild(row);
+        });
+        listBox.appendChild(table);
+      }
+      insumosLabel.textContent = 'Descuento total de insumos: ' + money(pendingInsumosTotal());
+    };
+    renderInsumoList();
+
+    wrap.querySelector('#btn-add-insumo-line').onclick = () => {
+      const opt = insumoSel.selectedOptions[0];
+      insumoLineError.style.display = 'none';
+      if (!opt || !opt.value){ insumoLineError.textContent = 'Selecciona un insumo.'; insumoLineError.style.display = 'block'; return; }
+      const mode = opt.dataset.mode;
+      const qtyRaw = qtyInput.value.trim();
+      const qty = mode === 'cantidad' ? parseQty(qtyRaw) : 1;
+      if (mode === 'cantidad' && (qtyRaw === '' || isNaN(qty))){ insumoLineError.textContent = 'Ingresa una cantidad válida (ej. 7 1/2, 3/4, 45).'; insumoLineError.style.display = 'block'; return; }
+      const base = computeInsumoBase();
+      const monto = parseFloat(insumoMontoInput.value);
+      if (isNaN(monto) || monto < 0){ insumoLineError.textContent = 'Ingresa un monto válido para esta línea.'; insumoLineError.style.display = 'block'; return; }
+      pendingInsumos.push({
+        id: uid('pi'), insumoId: opt.value, label: opt.dataset.label, mode, unit: opt.dataset.unit,
+        qty, qtyRaw: mode === 'cantidad' ? qtyRaw : '', base, monto, overridden: !isNaN(base) && monto !== base
+      });
+      insumoSel.value = '';
+      qtyInput.value = '';
+      insumoMontoInput.value = 0;
+      applyInsumoDefault();
+      render();
+    };
+
+    // agregar línea (servicio + insumos acumulados) a la cuenta
     wrap.querySelector('#btn-add-line').onclick = () => {
       const opt = serviceSel.selectedOptions[0];
       const stylistId = lockedStylist ? ticket.stylistId : wrap.querySelector('#sel-stylist').value;
@@ -477,25 +600,26 @@
       const base = parseFloat(opt.dataset.price);
       const monto = parseFloat(montoInput.value);
       if (isNaN(monto) || monto < 0) return;
-      const insumoBase = parseFloat(insumoSel.value) || 0;
-      const insumoMonto = parseFloat(insumoMontoInput.value) || 0;
-      const descuentoInsumos = calcInsumos();
+      const insumosUsados = pendingInsumos.slice();
+      const descuentoInsumos = insumosUsados.reduce((a, p) => a + p.monto, 0);
       const serviceName = opt.textContent.split(' — ')[0].replace(' (precio variable)','');
       const addLine = () => {
         if (!lockedStylist) ticket.stylistId = stylist.id;
-        ticket.items.push({ id: uid('t'), serviceName, basePrice: isVar ? null : base, price: monto, descuentoInsumos });
+        ticket.items.push({ id: uid('t'), serviceName, basePrice: isVar ? null : base, price: monto, descuentoInsumos, insumosUsados });
+        pendingInsumos = [];
         render();
       };
-      const needsPrice = !isVar && monto !== base && needsPriceAuth();
-      const needsInsumo = insumoMonto !== insumoBase && needsPriceAuth();
+      const needsPrice = !isVar && monto !== base && needsPriceAuth(b);
+      const needsInsumo = insumosUsados.some(p => p.overridden) && needsPriceAuth(b);
+      const validPins = getValidAuthPins(b.id);
       if (needsPrice){
-        pinModal = { expected: state.settings.priceOverridePin, message: 'El monto (' + money(monto) + ') difiere del precio base (' + money(base) + ') de "' + serviceName + '". Autoriza con PIN.', onConfirm: () => {
-          if (needsInsumo){ pinModal = { expected: state.settings.priceOverridePin, message: 'El descuento de insumo (' + money(insumoMonto) + ') no coincide con el insumo seleccionado. Autoriza con PIN.', onConfirm: addLine }; render(); }
+        pinModal = { expectedList: validPins, message: 'El monto (' + money(monto) + ') difiere del precio base (' + money(base) + ') de "' + serviceName + '". Autoriza con PIN (dueño o encargado).', onConfirm: () => {
+          if (needsInsumo){ pinModal = { expectedList: validPins, message: 'Uno o más montos de insumo no coinciden con el cálculo automático. Autoriza con PIN (dueño o encargado).', onConfirm: addLine }; render(); }
           else addLine();
         } };
         render();
       } else if (needsInsumo){
-        pinModal = { expected: state.settings.priceOverridePin, message: 'El descuento de insumo (' + money(insumoMonto) + ') no coincide con el insumo seleccionado. Autoriza con PIN.', onConfirm: addLine };
+        pinModal = { expectedList: validPins, message: 'Uno o más montos de insumo no coinciden con el cálculo automático. Autoriza con PIN (dueño o encargado).', onConfirm: addLine };
         render();
       } else { addLine(); }
     };
@@ -506,8 +630,10 @@
       const table = el(`<table class="esth-table"><thead><tr><th>Servicio</th><th style="text-align:right;">Monto</th><th></th></tr></thead><tbody></tbody></table>`);
       const tbody = table.querySelector('tbody');
       ticket.items.forEach(i => {
-        const row = el(`<tr><td>${i.serviceName}</td><td class="esth-money" style="text-align:right;">${money(i.price)}</td>
-          <td style="text-align:right;"><button class="esth-icon-btn">Quitar</button></td></tr>`);
+        const insumosResumen = (i.insumosUsados || []).map(p => p.label + (p.mode === 'cantidad' ? ` ${p.qtyRaw}${p.unit==='ml'?'ml':'g'}` : '')).join(', ');
+        const row = el(`<tr><td>${i.serviceName}${insumosResumen ? `<br><span style="font-size:11px;color:var(--ink-soft);">Insumos: ${insumosResumen} (${money(i.descuentoInsumos||0)})</span>` : ''}</td>
+          <td class="esth-money" style="text-align:right;vertical-align:top;">${money(i.price)}</td>
+          <td style="text-align:right;vertical-align:top;"><button class="esth-icon-btn">Quitar</button></td></tr>`);
         row.querySelector('button').onclick = () => { ticket.items = ticket.items.filter(x => x.id !== i.id); if (ticket.items.length===0) ticket.stylistId = null; render(); };
         tbody.appendChild(row);
       });
@@ -768,38 +894,55 @@
 
   function adminInsumos(b){
     const wrap = el(`<div>
-      <p class="esth-legend" style="font-weight:600;margin-bottom:10px;">Insumos con descuento (tinte, marroquín, base, etc.)</p>
-      <p class="esth-hint" style="margin-bottom:12px;">Agrega cualquier insumo que se descuente al cerrar un servicio, con su costo. Cada sucursal puede tener los suyos.</p>
+      <p class="esth-legend" style="font-weight:600;margin-bottom:10px;">Insumos con descuento (tinte, marroquín, bótox, keratina, base, etc.)</p>
+      <p class="esth-hint" style="margin-bottom:12px;">Agrega cualquier insumo que se descuente al cerrar un servicio. Puede ser un costo fijo, o un costo por cantidad (gramos o ml) para que se calcule según lo que se use.</p>
       <div class="esth-card" style="margin-bottom:18px;">
+        <div class="esth-field"><label>Nombre del insumo</label><input id="new-insumo-label" type="text" placeholder="Ej. Marroquín, Bótox, Keratina, 1 Tubo de tinte"/></div>
+        <div class="esth-field"><label>Tipo de costo</label><select id="new-insumo-mode">
+          <option value="fijo">Costo fijo</option>
+          <option value="cantidad">Costo por cantidad (gramos o ml)</option>
+        </select></div>
         <div class="esth-grid2">
-          <div class="esth-field"><label>Nombre del insumo</label><input id="new-insumo-label" type="text" placeholder="Ej. Marroquín, Base, 1 Tubo de tinte"/></div>
-          <div class="esth-field"><label>Costo ($)</label><input id="new-insumo-price" type="number" min="0" step="0.5" placeholder="0.00"/></div>
+          <div class="esth-field"><label id="new-insumo-price-label">Costo ($)</label><input id="new-insumo-price" type="number" min="0" step="0.5" placeholder="0.00"/></div>
+          <div class="esth-field" id="new-insumo-unit-wrap" style="display:none;"><label>Unidad</label><select id="new-insumo-unit">
+            <option value="gramo">Gramo</option>
+            <option value="ml">Mililitro (ml)</option>
+          </select></div>
         </div>
         <button class="esth-btn" id="add-insumo">Agregar insumo</button>
       </div>
-      <table class="esth-table"><thead><tr><th>Insumo</th><th>Costo</th><th></th></tr></thead><tbody id="insumo-body"></tbody></table>
-
-      <p class="esth-section-title">Decolorante</p>
-      <div class="esth-card" style="max-width:320px;">
-        <div class="esth-field"><label>Costo por gramo ($)</label>
-          <input id="deco-price" type="number" min="0" step="0.1" value="${b.insumos.decolorantePorGramo ?? ''}" placeholder="0.00"/></div>
-        <button class="esth-btn" id="deco-save">Guardar</button>
-        <div id="deco-msg"></div>
-      </div>
+      <table class="esth-table"><thead><tr><th>Insumo</th><th>Tipo</th><th>Costo</th><th></th></tr></thead><tbody id="insumo-body"></tbody></table>
     </div>`);
+
+    const modeSel = wrap.querySelector('#new-insumo-mode');
+    const unitWrap = wrap.querySelector('#new-insumo-unit-wrap');
+    const priceLabel = wrap.querySelector('#new-insumo-price-label');
+    const toggleMode = () => {
+      const isCantidad = modeSel.value === 'cantidad';
+      unitWrap.style.display = isCantidad ? 'block' : 'none';
+      priceLabel.textContent = isCantidad ? 'Costo por unidad ($)' : 'Costo ($)';
+    };
+    modeSel.addEventListener('change', toggleMode);
+    toggleMode();
+
     wrap.querySelector('#add-insumo').onclick = async () => {
       const label = wrap.querySelector('#new-insumo-label').value.trim();
+      const mode = modeSel.value;
       const price = parseFloat(wrap.querySelector('#new-insumo-price').value);
+      const unit = wrap.querySelector('#new-insumo-unit').value;
       if (!label || isNaN(price) || price < 0) return;
-      b.insumos.items.push({ id: uid('f'), label, price });
+      b.insumos.items.push({ id: uid('f'), label, mode, price, unit: mode === 'cantidad' ? unit : null });
       await save(); render();
     };
+
     const tbody = wrap.querySelector('#insumo-body');
-    if (b.insumos.items.length === 0) tbody.appendChild(el(`<tr><td colspan="3" class="esth-empty">Aún no hay insumos configurados.</td></tr>`));
+    if (b.insumos.items.length === 0) tbody.appendChild(el(`<tr><td colspan="4" class="esth-empty">Aún no hay insumos configurados.</td></tr>`));
     b.insumos.items.forEach(f => {
+      const unitLabel = f.unit === 'ml' ? 'ml' : 'g';
       const row = el(`<tr>
         <td><input type="text" value="${f.label}" style="border:none;background:none;width:100%;font-size:13px;font-family:inherit;color:var(--ink);"/></td>
-        <td><input type="number" value="${f.price}" min="0" style="border:none;background:none;width:80px;font-size:13px;font-family:inherit;color:var(--ink);"/></td>
+        <td>${f.mode === 'cantidad' ? 'Por ' + unitLabel : 'Fijo'}</td>
+        <td><input type="number" value="${f.price}" min="0" style="border:none;background:none;width:80px;font-size:13px;font-family:inherit;color:var(--ink);"/>${f.mode==='cantidad' ? ' <span class="esth-hint">/ '+unitLabel+'</span>' : ''}</td>
         <td style="text-align:right;"><button class="esth-icon-btn">Eliminar</button></td>
       </tr>`);
       const inputs = row.querySelectorAll('input');
@@ -808,12 +951,6 @@
       row.querySelector('button').onclick = async () => { b.insumos.items = b.insumos.items.filter(x => x.id !== f.id); await save(); render(); };
       tbody.appendChild(row);
     });
-    wrap.querySelector('#deco-save').onclick = async () => {
-      const v = wrap.querySelector('#deco-price').value;
-      b.insumos.decolorantePorGramo = v === '' ? null : parseFloat(v);
-      await save();
-      wrap.querySelector('#deco-msg').innerHTML = '<p class="esth-ok" style="margin-top:10px;">Guardado.</p>';
-    };
     return wrap;
   }
 
@@ -877,7 +1014,7 @@
       const addr = wrap.querySelector('#new-branch-addr').value.trim();
       if (!name) return;
       state.branches.push({ id: uid('b'), name, address: addr, cashier: { user: 'cajero', pass: '1234' },
-        services: [], stylists: [], sales: [], products: [], insumos: { items: [], decolorantePorGramo: null } });
+        services: [], stylists: [], sales: [], products: [], insumos: { items: [] } });
       await save(); render();
     };
     const tbody = wrap.querySelector('#br-body');
@@ -908,7 +1045,8 @@
   function adminUsuarios(){
     const wrap = el(`<div>
       <p class="esth-legend" style="font-weight:600;margin-bottom:10px;">Administradores</p>
-      <table class="esth-table" style="margin-bottom:22px;"><thead><tr><th>Usuario</th><th>Contraseña</th><th>Rol</th><th>Sucursales</th><th></th></tr></thead><tbody id="adm-body"></tbody></table>
+      <p class="esth-hint" style="margin-bottom:12px;">El "PIN de autorización" es opcional y sirve para que un encargado pueda autorizar en su propia sucursal cambios de precio o de insumos sin necesitar al propietario (que no siempre está disponible). Es distinto de la contraseña de acceso.</p>
+      <table class="esth-table" style="margin-bottom:22px;"><thead><tr><th>Usuario</th><th>Contraseña</th><th>Rol</th><th>Sucursales</th><th>PIN de autorización</th><th></th></tr></thead><tbody id="adm-body"></tbody></table>
 
       <p class="esth-section-title">Crear administrador</p>
       <div class="esth-card">
@@ -926,6 +1064,7 @@
               <input type="checkbox" class="new-adm-branch" value="${br.id}"/> ${br.name}</label>`).join('')}
           </div>
         </div>
+        <div class="esth-field"><label>PIN de autorización (opcional, para autorizar precios/insumos en caja)</label><input id="new-adm-pin" type="text" maxlength="10"/></div>
         <button class="esth-btn" id="create-adm">Crear administrador</button>
         <div id="create-adm-msg"></div>
       </div>
@@ -939,11 +1078,13 @@
         <td><input type="text" value="${a.pass}" style="border:none;background:none;width:90px;font-size:13px;font-family:inherit;color:var(--ink);"/></td>
         <td>${a.role === 'propietario' ? 'Propietario' : 'Encargado'}</td>
         <td>${branchNames}</td>
+        <td><input type="text" value="${a.pin||''}" maxlength="10" placeholder="Sin PIN" style="border:none;background:none;width:80px;font-size:13px;font-family:inherit;color:var(--ink);letter-spacing:2px;"/></td>
         <td style="text-align:right;"><button class="esth-icon-btn" ${state.admins.length<=1?'disabled':''}>Eliminar</button></td>
       </tr>`);
-      const [userInput, passInput] = row.querySelectorAll('input');
+      const [userInput, passInput, pinInput] = row.querySelectorAll('input');
       userInput.onchange = async () => { a.user = userInput.value.trim() || a.user; await save(); };
       passInput.onchange = async () => { a.pass = passInput.value || a.pass; await save(); };
+      pinInput.onchange = async () => { a.pin = pinInput.value.trim(); await save(); };
       row.querySelector('button').onclick = async () => {
         if (state.admins.length<=1) return;
         state.admins = state.admins.filter(x => x.id !== a.id);
@@ -959,6 +1100,7 @@
     wrap.querySelector('#create-adm').onclick = () => {
       const user = wrap.querySelector('#new-adm-user').value.trim();
       const pass = wrap.querySelector('#new-adm-pass').value;
+      const pin = wrap.querySelector('#new-adm-pin').value.trim();
       const role = roleSel.value;
       const branchIds = Array.from(wrap.querySelectorAll('.new-adm-branch:checked')).map(c => c.value);
       if (!user || !pass) return;
@@ -971,7 +1113,7 @@
         title: 'Clave maestra',
         message: 'Ingresa la clave maestra para crear un nuevo administrador.',
         onConfirm: async () => {
-          state.admins.push({ id: uid('a'), user, pass, role, branchIds: role === 'propietario' ? [] : branchIds });
+          state.admins.push({ id: uid('a'), user, pass, role, branchIds: role === 'propietario' ? [] : branchIds, pin });
           await save(); render();
         }
       };
@@ -985,8 +1127,10 @@
       <p class="esth-legend" style="font-weight:600;margin-bottom:10px;">Datos generales y claves</p>
       <div class="esth-field"><label>Nombre de la cadena</label><input id="cfg-chain" type="text" value="${state.chainName}"/></div>
       <div class="esth-field"><label>Clave maestra (para crear administradores)</label><input id="cfg-master" type="text" maxlength="12" value="${state.settings.masterPin}"/></div>
-      <div class="esth-field"><label>PIN para autorizar cambios de precio (dejar vacío para desactivar)</label>
-        <input id="cfg-pin" type="text" maxlength="10" value="${state.settings.priceOverridePin}"/></div>
+      <div class="esth-field"><label>PIN maestro para autorizar cambios de precio (dejar vacío para desactivar)</label>
+        <input id="cfg-pin" type="text" maxlength="10" value="${state.settings.priceOverridePin}"/>
+        <p class="esth-hint">Además de este PIN, cualquier encargado con un "PIN de autorización" configurado en la pestaña Usuarios podrá autorizar estos cambios en las sucursales que administra, sin necesitar al propietario.</p>
+      </div>
       <button class="esth-btn" id="cfg-save">Guardar cambios</button>
       <div id="cfg-msg"></div>
     </div>`);
