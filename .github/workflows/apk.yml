@@ -1,0 +1,51 @@
+name: Construir APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Llave de firma estable
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f signing/debug.keystore ]; then
+            mkdir -p signing
+            keytool -genkey -keystore signing/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            git config user.name github-actions
+            git config user.email github-actions@github.com
+            git add signing/debug.keystore
+            git commit -m "Agregar llave de firma"
+            git push
+          fi
+          cp signing/debug.keystore ~/.android/debug.keystore
+      - name: Preparar proyecto
+        run: |
+          npm init -y
+          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/filesystem@6 @capacitor/share@6 xlsx@0.18.5
+          mkdir www
+          cp index.html www/
+          cp node_modules/xlsx/dist/xlsx.full.min.js www/
+          npx cap init "Caja del salon" com.salon.caja --web-dir=www
+          npx cap add android
+          npx cap sync android
+      - name: Numero de version
+        run: sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" android/app/build.gradle
+      - name: Compilar
+        working-directory: android
+        run: ./gradlew assembleDebug
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          files: android/app/build/outputs/apk/debug/app-debug.apk
