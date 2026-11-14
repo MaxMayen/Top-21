@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<title>Caja del salón</title>
+<style>
+:root{--bg:#f5f2f8;--cd:#fff;--tx:#1f1a24;--mu:#766d80;--ac:#5b2a86;--on:#fff;--bd:#e3dcea;--ok:#17724c;--okb:#dff3e8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#150f1b;--cd:#211a29;--tx:#f1ecf5;--mu:#a699b3;--ac:#b98cf0;--on:#190f24;--bd:#372c44;--ok:#6fdca6;--okb:#173a2a}}
+:root[data-theme="dark"]{--bg:#150f1b;--cd:#211a29;--tx:#f1ecf5;--mu:#a699b3;--ac:#b98cf0;--on:#190f24;--bd:#372c44;--ok:#6fdca6;--okb:#173a2a}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:12px 12px 90px;max-width:560px;margin:0 auto}
+h1{font-size:20px;margin:0}h2{font-size:17px;margin:0 0 8px}small,.mu{color:var(--mu)}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+button{font:inherit;color:inherit;border:1px solid var(--bd);background:var(--cd);border-radius:12px;padding:10px 12px;min-height:44px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--ac);outline-offset:1px}
+.on,.b{background:var(--ac);color:var(--on);border-color:var(--ac);font-weight:600}
+.b{width:100%;margin-top:10px}.b:disabled{opacity:.4}
+.in{width:100%;font:inherit;color:inherit;background:var(--cd);border:1px solid var(--bd);border-radius:12px;padding:10px;min-height:44px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}.chips button{white-space:nowrap}
+.seg,.seg3{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}.seg3{grid-template-columns:repeat(3,1fr)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.grid button{text-align:left;display:flex;flex-direction:column;gap:2px}.grid small{font-size:14px}
+.card{background:var(--cd);border:1px solid var(--bd);border-radius:14px;padding:12px;margin:10px 0}
+.row{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd)}.row:last-child{border:0}
+.row span{flex:1}.x{padding:4px 10px;min-height:36px}
+.tot{display:flex;justify-content:space-between;font-size:22px;font-weight:700;margin-top:8px}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;gap:6px;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));background:var(--cd);border-top:1px solid var(--bd)}
+nav button{flex:1}
+.ov{position:fixed;inset:0;background:rgba(10,5,15,.6);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+.md{background:var(--bg);width:100%;max-width:560px;max-height:90vh;overflow-y:auto;border-radius:20px 20px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.big{font-size:40px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.chg{background:var(--okb);color:var(--ok);border-radius:14px;padding:10px 14px;margin-top:10px}
+.q{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.lock{text-align:center;padding-top:15vh}.lock input{text-align:center;font-size:28px;letter-spacing:.4em;max-width:240px}
+.fr{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--bd)}.fr .in{flex:1 1 90px}
+details{margin:6px 0}summary{font-weight:700;padding:10px 0}
+.seg3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}.lb{font-size:12px;color:var(--mu);display:grid;gap:3px}.ir{padding:10px 0;border-bottom:1px solid var(--bd);display:grid;gap:8px}.ir2{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;align-items:end}select.in{appearance:auto}details.card>summary{font-weight:700}details details{padding-left:6px}
+</style></head><body><div id="app"></div>
+<script src="xlsx.full.min.js"></script>
+<script>window.XLSX||document.write('<script src="xlsx.full.min.js"><\/script>')</script>
+<script>
+const def=()=>({pin:'1234',staff:[],svc:[],prod:[],dsc:[],sales:[],exp:[]});
+let D;try{D=JSON.parse(localStorage.getItem('caja2'))}catch(e){}D=D||def();D.apin=D.apin||'0000';D.peo=D.peo||{};
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+const sv=()=>{try{localStorage.setItem('caja2',JSON.stringify(D))}catch(e){}};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const m=n=>'$'+(+n).toLocaleString('es-MX',{maximumFractionDigits:2});
+const today=()=>new Date().toLocaleDateString('sv'),$=id=>document.getElementById(id),Z=(a,f)=>a.reduce((s,x)=>s+f(x),0);
+const dtot=x=>Math.ceil(Math.round(Z(x.d||[],y=>y.a)*100)/100),tot=()=>Z(T,x=>x.p);
+const sc=n=>(D.staff.find(z=>z.n==n)||{}).c||0;
+let v='lock',tab='s',q='',sel=0,T=[],cd=today(),pay=null,ds=null,aok=0,pn=null;const O={};
+function r(){let h='';if(v=='lock')h=lock();else{if(sel>=D.staff.length)sel=Math.max(0,D.staff.length-1);h=`<div class=top><h1>${{pos:'Cobrar',cut:'Corte del día',adm:'Administración'}[v]}</h1><button onclick="go('lock')" aria-label="Bloquear">🔒</button></div>`+(v=='pos'?pos():v=='cut'?cut():adm())+`<nav>${[['pos','Cobrar'],['cut','Corte'],['adm','Admin']].map(a=>`<button class="${v==a[0]?'on':''}" onclick="go('${a[0]}')">${a[1]}</button>`).join('')}</nav>`+(pn?pmod():pay?modal():ds!=null?dmod():'')}$('app').innerHTML=h}
+function go(x){if(x=='adm'&&!aok){askPin(()=>{aok=1;v='adm';r()});return}if(x!='adm')aok=0;v=x;r()}
+function askPin(f){pn={f};r();setTimeout(()=>{const e=$('ap');e&&e.focus()},50)}
+function pmod(){return`<div class=ov><div class=md><h2>PIN de administración</h2><input id=ap class=in type=password inputmode=numeric autocomplete=off onkeydown="if(event.key=='Enter')pok()"><p id=perr style="color:#c0392b;margin:6px 0 0"></p>${D.apin=='0000'?'<p class=mu>PIN inicial: 0000</p>':''}<button class=b onclick="pok()">Confirmar</button><button class=in style="margin-top:8px" onclick="pn=null;r()">Cancelar</button></div></div>`}
+function pok(){if($('ap').value===D.apin){const f=pn.f;pn=null;f()}else{$('perr').textContent='PIN incorrecto.';$('ap').value=''}}
+function chp(i){askPin(()=>{const p=parseFloat(prompt('Nuevo precio de '+T[i].n+':',T[i].p));if(!isNaN(p)&&p>=0)T[i].p=p;r()})}
+function lock(){return`<div class=lock><h1>Caja del salón</h1><p class=mu>Escribe tu PIN</p><input id=pin class=in type=password inputmode=numeric autocomplete=off onkeydown="if(event.key=='Enter')unlock()"><button class=b style="max-width:240px" onclick="unlock()">Entrar</button><p id=err style="color:#c0392b"></p>${D.pin=='1234'?'<p class=mu>PIN inicial: 1234 (cámbialo en Admin)</p>':''}</div>`}
+function unlock(){if($('pin').value===D.pin){v='pos';r()}else{$('err').textContent='PIN incorrecto. Inténtalo de nuevo.';$('pin').value=''}}
+const src=()=>tab=='s'?D.svc:D.prod;
+function gh(){const L=src().map((x,i)=>[x,i]).filter(o=>(tab=='s'||o[0].t==tab)&&o[0].n.toLowerCase().includes(q.toLowerCase()));return L.length?L.map(o=>`<button onclick="add(${o[1]})">${esc(o[0].n)}<small>${o[0].p?m(o[0].p):'Precio variable'}${o[0].t=='p'?' · '+((o[0].q||0)>0?'Quedan '+o[0].q:'Agotado'):''}</small></button>`).join(''):'<p class=mu>Nada por aquí. Agrégalo en Admin.</p>'}
+function g(){$('grid').innerHTML=gh()}
+function pos(){const t=tot();return(D.staff.length?`<div class=chips>${D.staff.map((s,i)=>`<button class="${i==sel?'on':''}" onclick="sel=${i};r()">${esc(s.n)}</button>`).join('')}</div>`:`<div class=card><b>Para empezar</b><p class=mu>Ve a Admin y agrega tu personal, servicios, productos y descuentos.</p></div>`)+
+`<div class=seg3>${[['s','Servicios'],['a','Ampolletas'],['p','Productos']].map(a=>`<button class="${tab==a[0]?'on':''}" onclick="tab='${a[0]}';r()">${a[1]}</button>`).join('')}</div>
+<input class=in placeholder="Buscar" value="${esc(q)}" oninput="q=this.value;g()"><div class=grid id=grid>${gh()}</div>
+<div class=card><h2>Cuenta</h2>${T.length?T.map((x,i)=>`<div class=row><span>${esc(x.n)}<br><small>${esc(x.st)}${x.k=='s'?' · desc. '+m(dtot(x)):''}${x.fx&&x.p!=x.p0?' · antes '+m(x.p0):''}</small></span><b>${m(x.p)}</b>${x.fx?`<button class=x onclick="chp(${i})">Precio</button>`:''}${x.k=='s'?`<button class=x onclick="ds=${i};r()">Desc.</button>`:''}<button class=x onclick="T.splice(${i},1);r()" aria-label="Quitar">✕</button></div>`).join(''):'<p class=mu>Toca un servicio o producto para agregarlo.</p>'}
+<div class=tot><span>Total</span><span>${m(t)}</span></div><button class=b ${T.length?'':'disabled'} onclick="pay={m:'e',rec:0,tk:'0',tp:0,w:''};r()">Cobrar ${T.length?m(t):''}</button></div>`}
+function add(i){const x=src()[i];if(!D.staff.length){alert('Agrega personal en Admin.');return}if(x.t=='p'&&T.filter(y=>y.k=='p'&&y.n==x.n).length>=(x.q||0)){alert('Sin existencias de '+x.n);return}let p=x.p;if(!p){p=parseFloat(prompt('Precio de '+x.n));if(isNaN(p)||p<0)return}const s=tab=='s';T.push({fx:x.p>0?1:0,p0:p,k:s?'s':x.t,n:x.n,p,c:s?0:x.c,st:D.staff[sel].n,d:s?D.dsc.filter(z=>z.f&&z.s==x.n).map(z=>({n:z.n,q:'fijo',a:z.a})):[]});r()}
+function dmod(){const x=T[ds],C=D.dsc.map((z,j)=>[z,j]).filter(o=>!o[0].f);return`<div class=ov><div class=md><h2>Descuentos · ${esc(x.n)}</h2>${x.d.map((y,j)=>`<div class=row><span>${esc(y.n)} <small>${esc(y.q)}</small></span><b>${m(y.a)}</b><button class=x onclick="T[ds].d.splice(${j},1);r()" aria-label="Quitar">✕</button></div>`).join('')||'<p class=mu>Sin descuentos todavía.</p>'}<div class=tot><span>Total (redondeado)</span><span>${m(dtot(x))}</span></div>${C.length?`<label class=lb>Concepto<select id=dc class=in>${C.map(o=>`<option value=${o[1]}>${esc(o[0].n)} (${m(o[0].a)} c/u)</option>`).join('')}</select></label><label class=lb>Cantidad (ej. 25, 1/2, 0.75)<input id=dq class=in></label><button class=in style="margin-top:8px" onclick="adq()">Agregar descuento</button>`:'<p class=mu>Crea descuentos calculados en Admin.</p>'}<button class=b onclick="ds=null;r()">Listo</button></div></div>`}
+function adq(){const z=D.dsc[$('dc').value],s=$('dq').value.trim(),p=s.split('/'),n=p.length==2?p[0]/p[1]:parseFloat(s);if(!(n>0)||!isFinite(n)){alert('Escribe una cantidad válida.');return}T[ds].d.push({n:z.n,q:s,a:z.a*n});r()}
+function modal(){const t=tot(),d=due(),e=pay.m=='e',W=['Cajero',...D.staff.map(s=>s.n)];return`<div class=ov><div class=md><div class=mu>Total a cobrar${pay.tp>0?' (cuenta '+m(t)+' + propina '+m(pay.tp)+')':''}</div><div class=big id=due>${m(d)}</div>
+<div class=mu style="margin-top:8px">¿Deja propina?</div><div class=q>${[['0','Sin'],['10','10%'],['20','20%'],['50','50%'],['x','Otra']].map(o=>`<button class="${pay.tk==o[0]?'on':''}" onclick="stp('${o[0]}')">${o[1]}</button>`).join('')}</div>${pay.tk=='x'?`<input id=tc class=in style="margin-top:8px" inputmode=decimal placeholder="Monto de la propina" value="${pay.tp||''}" oninput="pay.tp=parseFloat(this.value)||0;ud()">`:''}${pay.tp>0||pay.tk=='x'?`<div class=mu style="margin-top:8px">¿Para quién?</div><div class=q>${W.map(n=>`<button class="${pay.w==n?'on':''}" data-n="${esc(n)}" onclick="pay.w=this.dataset.n;r()">${esc(n)}</button>`).join('')}</div>`:''}
+<div class=seg><button class="${e?'on':''}" onclick="pay.m='e';r()">Efectivo</button><button class="${e?'':'on'}" onclick="pay.m='t';r()">Electrónico</button></div>
+${e?`<label class=mu for=rc>Recibido</label><input id=rc class=in inputmode=decimal value="${pay.rec||''}" oninput="pay.rec=parseFloat(this.value)||0;ch()"><div class=q>${[due(),100,200,500,1000].map((n,i)=>`<button onclick="pay.rec=${n};r()">${i?m(n):'Exacto'}</button>`).join('')}</div><div class=chg>Cambio <div class=big id=chg>${chs()}</div></div>`:''}
+<button class=b id=ok onclick="done()" ${okc()?'disabled':''}>Confirmar cobro</button><button class=in style="margin-top:8px" onclick="pay=null;r()">Cancelar</button></div></div>`}
+const due=()=>tot()+(pay.tp||0),okc=()=>(pay.m=='e'&&pay.rec<due())||(pay.tp>0&&!pay.w);
+function chs(){const c=pay.rec-due();return c>=0?m(c):'Faltan '+m(-c)}
+function ch(){const c=$('chg');if(c)c.textContent=chs();$('ok').disabled=okc()}
+function ud(){$('due').textContent=m(due());ch()}
+function stp(k){pay.tk=k;pay.tp=k=='0'?0:k=='x'?pay.tp:Math.round(tot()*k)/100;if(k=='0')pay.w='';r()}
+function done(){const t=tot(),e=pay.m=='e';D.sales.push({d:today(),t:Date.now(),items:T,total:t,m:pay.m,rec:e?pay.rec:due(),ch:e?pay.rec-due():0,tp:pay.tp>0?{a:pay.tp,w:pay.w}:null});T.forEach(x=>{if(x.k=='p'){const z=D.prod.find(y=>y.n==x.n&&y.t=='p');if(z)z.q=Math.max(0,(z.q||0)-1)}});T=[];pay=null;sv();r()}
+function agg(d){const S=D.sales.filter(s=>s.d==d),X=D.exp.filter(e=>e.d==d),by={};let pe=0,tt=0,vt=0,vp=0;const tp={};S.forEach(s=>{if(s.tp){const o=tp[s.tp.w]=tp[s.tp.w]||{c:0,e:0};if(s.m=='e')o.c+=s.tp.a;else{o.e+=s.tp.a;pe+=s.tp.a}}s.items.forEach((x0,ix)=>{const x={...x0,ti:s.t,ix};x.k=='s'?tt+=x.p:x.k=='a'?vt+=x.p:vp+=x.p;if(s.m!='e'&&x.k!='p')pe+=x.p;(by[x.st]=by[x.st]||{s:[],a:[],p:[]})[x.k].push(x)})});const pe0=pe,pee=D.peo&&D.peo[d]!=null;if(pee)pe=D.peo[d];const gx=Z(X,e=>e.a);return{pe0,pee,S,X,by,tp,tpt:Z(Object.values(tp),o=>o.c+o.e),tt,vt,vp,gl:tt+vt,pe,gx,ef:tt+vt-pe-gx,names:[...D.staff.map(s=>s.n),...Object.keys(by).filter(n=>!D.staff.some(s=>s.n==n))]}}
+function st(a,n){const gs=Z(a.s,x=>x.p),dd=Z(a.s,dtot);return{gs,dd,nt:gs-dd,cs:(gs-dd)*sc(n)/100,ca:Z(a.a,x=>x.c),cp:Z(a.p,x=>x.c),va:Z(a.a,x=>x.p),vp:Z(a.p,x=>x.p)}}
+const R=(a,b)=>`<div class=row><span>${a}</span><b>${b}</b></div>`;
+const dt=(k,t,b)=>`<details ${O[k]?'open':''} ontoggle="O['${k}']=this.open?1:0"><summary>${t}</summary>${b}</details>`;
+function cut(){const A=agg(cd);return`<input class=in type=date value="${cd}" onchange="cd=this.value||today();r()">
+<div class=card><h2>Resumen del día</h2>${R('Total (servicios)',m(A.tt))}${R('Ventas (ampolletas)',m(A.vt))}${R('Global',m(A.gl))}<div class=row><span>Pagos-e (electrónicos)${A.pee?'<br><small>editado · calculado '+m(A.pe0)+'</small>':''}</span><b>${m(A.pe)}</b><button class=x onclick="epe()" aria-label="Editar pagos electrónicos">✎</button></div>${R('Gastos',m(A.gx))}${R('Efectivo',m(A.ef))}</div><div class=card>${R('Venta de productos (aparte del corte)',m(A.vp))}</div><div class=card><h2>Propinas</h2>${Object.keys(A.tp).map(w=>{const o=A.tp[w];return R(esc(w)+'<br><small>efectivo '+m(o.c)+' · electrónica '+m(o.e)+'</small>',m(o.c+o.e))}).join('')||'<p class=mu>Sin propinas en esta fecha.</p>'}${A.tpt?R('Total de propinas',m(A.tpt))+'<p class=mu style="margin:6px 0 0">Ya están descontadas del Efectivo (las electrónicas, dentro de Pagos-e).</p>':''}</div>
+<h2>Por estilista</h2>${A.names.length?A.names.map((n,i)=>{const a=A.by[n]||{s:[],a:[],p:[]},z=st(a,n),L=(k,w,cm)=>a[k].map(x=>R(esc(x.n)+'<br><small>comisión '+m(x.c)+'</small>',m(x.p))).join('')+R('Total vendido',m(z[w]))+R('Comisión',m(z[cm]));
+return`<details class=card ${O['c'+i]?'open':''} ontoggle="O['c${i}']=this.open?1:0"><summary>${esc(n)} <span class=mu>· ${m(z.nt)} con desc.</span></summary>
+${R('Propinas recibidas',m(((A.tp[n]||{}).c||0)+((A.tp[n]||{}).e||0)))}${R('Servicios sin descuento',m(z.gs))}${R('Descuento total',m(z.dd))}${R('Servicios con descuento','<b>'+m(z.nt)+'</b>')}
+${dt('c'+i+'s','Servicios ('+a.s.length+')',a.s.map(x=>`<div class=row><span>${esc(x.n)}<br><small>cobrado ${m(x.p)} · desc. ${m(dtot(x))}</small></span><b>${m(x.p-dtot(x))}</b><button class=x onclick="rmv(${x.ti},${x.ix})" aria-label="Quitar servicio">✕</button></div>`).join('')+R('Comisión de servicios ('+sc(n)+'%)',m(z.cs)))}
+${dt('c'+i+'d','Desglose de descuentos',a.s.filter(x=>(x.d||[]).length).map(x=>`<p class=mu style="margin:8px 0 0">${esc(x.n)}</p>`+x.d.map(y=>R(esc(y.n)+' <small>'+esc(y.q)+'</small>',m(y.a))).join('')+R('Redondeado',m(dtot(x)))).join('')||'<p class=mu>Sin descuentos.</p>')}
+${dt('c'+i+'a','Ampolletas ('+a.a.length+')',L('a','va','ca'))}${dt('c'+i+'p','Productos ('+a.p.length+')',L('p','vp','cp'))}</details>`}).join(''):'<p class=mu>Agrega personal en Admin.</p>'}
+<div class=card><h2>Gastos</h2>${A.X.map(e=>`<div class=row><span>${esc(e.n)}</span><b>${m(e.a)}</b><button class=x onclick="delx(${e.t})" aria-label="Borrar gasto">✕</button></div>`).join('')||'<p class=mu>Sin gastos en esta fecha.</p>'}<div style="display:grid;grid-template-columns:1fr 110px;gap:6px;margin:8px 0"><input id=gn class=in placeholder="Concepto"><input id=ga class=in inputmode=decimal placeholder="Monto"></div><button class=in onclick="addx()">Agregar gasto</button></div>
+<button class=b onclick="exp()">Exportar a Excel</button>
+${A.S.length?`<button class=in style="margin-top:10px" onclick="if(confirm('¿Deshacer la última venta de este día?')){const i=D.sales.map(s=>s.d).lastIndexOf(cd);D.sales[i].items.forEach(x=>{if(x.k=='p'){const z=D.prod.find(y=>y.n==x.n&&y.t=='p');if(z)z.q=(z.q||0)+1}});D.sales.splice(i,1);sv();r()}">Deshacer última venta</button>`:''}`}
+function rmv(ti,ix){askPin(()=>{const s=D.sales.find(z=>z.t==ti);if(s){s.items.splice(ix,1);if(s.items.length)s.total=Z(s.items,y=>y.p);else D.sales.splice(D.sales.indexOf(s),1);sv()}r()})}
+function epe(){askPin(()=>{const A=agg(cd),s=prompt('Pagos electrónicos del día. Déjalo vacío para volver al calculado ('+m(A.pe0)+'):',A.pe);if(s!==null){if(s.trim()==='')delete D.peo[cd];else{const n=parseFloat(s);if(isNaN(n)||n<0)alert('Monto inválido.');else D.peo[cd]=n}sv()}r()})}
+function cbak(){try{navigator.clipboard.writeText(JSON.stringify(D)).then(()=>alert('Respaldo copiado. Pégalo en una nota para guardarlo.'),()=>alert('No se pudo copiar.'))}catch(e){alert('No se pudo copiar.')}}
+function rbak(){try{const o=JSON.parse($('rb').value);if(!o||!Array.isArray(o.staff)||!Array.isArray(o.sales))throw 0;if(!confirm('Esto reemplaza todos los datos actuales. ¿Continuar?'))return;D=o;D.apin=D.apin||'0000';D.peo=D.peo||{};D.exp=D.exp||[];D.dsc=D.dsc||[];sv();alert('Datos restaurados.');r()}catch(e){alert('El respaldo no es válido.')}}
+function addx(){const n=$('gn').value.trim(),a=parseFloat($('ga').value);if(!n||isNaN(a)||a<=0){alert('Escribe el concepto y un monto mayor a 0.');return}D.exp.push({d:cd,t:Date.now(),n,a});sv();r()}
+function delx(t){D.exp=D.exp.filter(e=>e.t!==t);sv();r()}
+async function exp(){if(!window.XLSX){alert('Para exportar necesitas conexión a internet la primera vez.');return}
+const A=agg(cd),TP={s:'Servicio',a:'Ampolleta',p:'Producto'},V=[['Fecha','Hora','Estilista','Tipo','Concepto','Precio','Descuento','Comisión','Pago']],E=[['Fecha','Estilista','Servicio','Concepto','Cantidad','Monto']];
+D.sales.forEach(s=>s.items.forEach(x=>{const d=x.k=='s'?dtot(x):0;V.push([s.d,new Date(s.t).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}),x.st,TP[x.k],x.n,x.p,d,x.k=='s'?(x.p-d)*sc(x.st)/100:x.c,s.m=='e'?'Efectivo':'Electrónico']);(x.d||[]).forEach(y=>E.push([s.d,x.st,x.n,y.n,y.q,y.a]))}));
+const C=[['Resumen del día',cd],['Total (servicios)',A.tt],['Ventas (ampolletas)',A.vt],['Global',A.gl],['Pagos-e',A.pe],['Gastos',A.gx],['Efectivo',A.ef],[],['Venta de productos (aparte)',A.vp],[],['Propinas','Efectivo','Electrónica','Total'],...Object.keys(A.tp).map(w=>[w,A.tp[w].c,A.tp[w].e,A.tp[w].c+A.tp[w].e]),[],['Estilista','Servicios sin desc.','Descuento','Servicios con desc.','Com. servicios','Ampolletas vendidas','Com. ampolletas','Productos vendidos','Com. productos'],...A.names.map(n=>{const z=st(A.by[n]||{s:[],a:[],p:[]},n);return[n,z.gs,z.dd,z.nt,z.cs,z.va,z.ca,z.vp,z.cp]})];
+const wb=XLSX.utils.book_new();[['Corte',C],['Detalle',V],['Descuentos',E],['Inventario',[['Producto','Existencias'],...D.prod.filter(p=>p.t=='p').map(p=>[p.n,p.q||0])]],['Gastos',[['Fecha','Concepto','Monto'],...D.exp.map(e=>[e.d,e.n,e.a])]],['Propinas',[['Fecha','Para','Monto','Pago'],...D.sales.filter(s=>s.tp).map(s=>[s.d,s.tp.w,s.tp.a,s.m=='e'?'Efectivo':'Electrónico'])]]].forEach(a=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a[1]),a[0]));
+const buf=XLSX.write(wb,{type:'array',bookType:'xlsx'}),fn='caja-'+cd+'.xlsx';
+try{const K=window.Capacitor;if(K&&K.isNativePlatform&&K.isNativePlatform()){const w=await K.Plugins.Filesystem.writeFile({path:fn,data:XLSX.write(wb,{type:'base64',bookType:'xlsx'}),directory:'CACHE'});await K.Plugins.Share.share({title:fn,url:w.uri});return}const dl=window.claude&&await claude.use('downloads');if(dl)await dl.save({filename:fn,data:buf});else{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([buf]));a.download=fn;a.click()}}catch(e){if(!e||(e.code!=='declined'&&!/cancel/i.test(e.message||'')))alert('No se pudo guardar el archivo.')}}
+const pinb=(k,t)=>`<p class=mu style="margin:0 0 6px">${t}</p><input id=n_${k} class=in inputmode=numeric placeholder="Nuevo PIN (4 a 8 dígitos)"><button class=in style="margin-top:6px" onclick="setp('${k}')">Guardar</button>`;
+function setp(k){const p=$('n_'+k).value;if(/^\d{4,8}$/.test(p)){D[k]=p;sv();$('n_'+k).value='';alert('PIN actualizado')}else alert('Usa de 4 a 8 números.')}
+const ed=(a,i,f,x)=>{D[a][i][f]=['n','t','s'].includes(f)?x:(parseFloat(x)||0);sv()};
+const del=(a,i)=>{if(confirm('¿Borrar?')){D[a].splice(i,1);sv();r()}};
+const ad=a=>{D[a].push({staff:{n:'Nuevo',c:0},svc:{n:'Nuevo servicio',p:0},prod:{n:'Nuevo producto',p:0,c:0,t:'a',q:0},dsc:{n:'Nuevo descuento',a:0,f:0,s:''}}[a]);O[a]=1;sv();r()};
+const lb=(t,h)=>`<label class=lb>${t}${h}</label>`;
+const ni=(a,i,f,x,w)=>`<input class=in ${w?'inputmode=decimal':''} value="${esc(x)}" onchange="ed('${a}',${i},'${f}',this.value)">`;
+const sl=(a,i,f,x,o)=>`<select class=in onchange="ed('${a}',${i},'${f}',this.value);r()">${o.map(p=>`<option value="${esc(p[0])}" ${p[0]==x?'selected':''}>${esc(p[1])}</option>`).join('')}</select>`;
+const dx=(a,i)=>`<button class=x onclick="del('${a}',${i})" aria-label="Borrar">✕</button>`;
+const ir=(a,i,nm,rows)=>`<div class=ir>${lb('Nombre',ni(a,i,'n',nm))}<div class=ir2>${rows}${dx(a,i)}</div></div>`;
+function adm(){return`<div class=card>`+dt('pin','PINs de acceso',pinb('apin','PIN de administración')+'<p class=mu style="margin:14px 0 6px">PIN de entrada</p>'+`<input id=np class=in inputmode=numeric placeholder="Nuevo PIN (4 a 8 dígitos)"><button class=b onclick="const p=$('np').value;if(/^\\d{4,8}$/.test(p)){D.pin=p;sv();$('np').value='';alert('PIN actualizado')}else alert('Usa de 4 a 8 números.')">Guardar PIN</button>`)+
+dt('staff','Personal',`<p class=mu>Comisión: % sobre los servicios con descuento.</p>`+D.staff.map((s,i)=>ir('staff',i,s.n,lb('Comisión servicios %',ni('staff',i,'c',s.c,1)))).join('')+`<button class=in onclick="ad('staff')">Agregar persona</button>`)+
+dt('svc','Servicios',`<p class=mu>Precio 0 = variable (se pide al cobrar).</p>`+D.svc.map((s,i)=>ir('svc',i,s.n,lb('Precio',ni('svc',i,'p',s.p,1)))).join('')+`<button class=in onclick="ad('svc')">Agregar servicio</button>`)+
+dt('prod','Ampolletas y productos',`<p class=mu>La comisión es en pesos por pieza vendida.</p>`+D.prod.map((s,i)=>ir('prod',i,s.n,lb('Precio',ni('prod',i,'p',s.p,1))+lb('Comisión $',ni('prod',i,'c',s.c,1))+lb('Tipo',sl('prod',i,'t',s.t,[['a','Ampolleta'],['p','Producto']]))+(s.t=='p'?lb('Existencias',ni('prod',i,'q',s.q||0,1)):''))).join('')+`<button class=in onclick="ad('prod')">Agregar</button>`)+
+dt('dsc','Descuentos a estilistas',`<p class=mu>Fijo: se descuenta solo al cobrar el servicio elegido. Calculado: al cobrar eliges la cantidad (ej. $2.5 por gramo).</p>`+D.dsc.map((s,i)=>ir('dsc',i,s.n,lb(s.f?'Monto $':'Costo por unidad $',ni('dsc',i,'a',s.a,1))+lb('Tipo',sl('dsc',i,'f',s.f,[['1','Fijo'],['0','Calculado']]))+(s.f?lb('Aplica a',sl('dsc',i,'s',s.s,[['','(ninguno)'],...D.svc.map(z=>[z.n,z.n])])):''))).join('')+`<button class=in onclick="ad('dsc')">Agregar descuento</button>`)+dt('bak','Respaldo de datos',`<p class=mu>Copia tus datos para guardarlos o pasarlos a otra instalación. Incluye los PINs: guárdalo en un lugar privado.</p><button class=in onclick="cbak()">Copiar respaldo</button><textarea id=rb class=in rows=3 placeholder="Pega aquí un respaldo para restaurarlo" style="margin-top:8px"></textarea><button class=in style="margin-top:6px" onclick="rbak()">Restaurar respaldo</button>`)+`</div>`}
+r();
+</script></body></html>
