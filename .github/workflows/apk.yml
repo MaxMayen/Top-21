@@ -33,12 +33,13 @@ jobs:
       - name: Preparar proyecto
         run: |
           npm init -y
-          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/filesystem@6 @capacitor/share@6 xlsx@0.18.5
+          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/filesystem@6 @capacitor/share@6 @aparajita/capacitor-biometric-auth@8.0.2 xlsx@0.18.5
           mkdir www
           cp index.html www/
           cp node_modules/xlsx/dist/xlsx.full.min.js www/
           npx cap init "Caja del salon" com.salon.caja --web-dir=www
           npx cap add android
+          sed -i 's#<application#<uses-permission android:name="android.permission.USE_BIOMETRIC" />\n    <application#' android/app/src/main/AndroidManifest.xml
           npx cap sync android
       - name: Numero de version
         run: sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" android/app/build.gradle
